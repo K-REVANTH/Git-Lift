@@ -436,241 +436,159 @@ LangSmith captures all of this automatically. Every run creates a complete trace
 
 The workflow is a directed graph with 12 nodes. Data flows through the graph as a **State** object — a structured container that holds all information about the current analysis. Each node reads from the state and writes its results back to the state.
 
-### The State Object
+## The State Object
 
 The State is the central data structure of the entire workflow. Every node receives the complete state and returns only the fields it has updated.
 
-MigrationState contains:
+### INPUT — set at the start of every workflow run:
 
-**INPUT (set at the start):**
+| Field | Example Value |
+|-------|---------------|
+| source_platform | `"gitlab"` |
+| target_platform | `"github"` |
+| feature_name | `"Dependent Merge Requests"` |
+| feature_description | Optional additional context |
+| user_context | Team size, timeline, constraints |
 
-```text
-source_platform "gitlab"
-target_platform "github"
-feature_name "Dependent Merge Requests"
-feature_description Optional additional context
-user_context Team size, timeline, constraints
-```
+### CLASSIFICATION — populated by the classify_feature node:
 
-**CLASSIFICATION:**
+| Field | Example Value |
+|-------|---------------|
+| feature_category | `"SCM" \| "CI_CD" \| "Security" \| "Project"` |
+| feature_tags | `["merge_requests", "dependencies"]` |
 
-```text
-feature_category "SCM" | "CI_CD" | "Security" | "Project"
-feature_tags ["merge_requests", "dependencies"]
-```
+### RETRIEVAL — populated by the retrieval nodes:
 
-**RETRIEVAL:**
+| Field | Example Value |
+|-------|---------------|
+| source_docs | Retrieved GitLab documentation chunks |
+| target_docs | Retrieved GitHub documentation chunks |
+| retrieval_quality | `"sufficient" \| "insufficient"` |
 
-```text
-source_docs Retrieved GitLab documentation chunks
-target_docs Retrieved GitHub documentation chunks
-retrieval_quality "sufficient" | "insufficient"
-```
+### ANALYSIS — populated by the analysis and reflection nodes:
 
-**ANALYSIS:**
+| Field | Example Value |
+|-------|---------------|
+| analysis | Structured MigrationAnalysis object |
+| confidence | Float between 0.0 and 1.0 |
+| iterations | Retry counter (maximum: 2) |
 
-```text
-analysis Structured MigrationAnalysis object
-confidence Float between 0.0 and 1.0
-iterations Retry counter (maximum: 2)
-```
+### HUMAN REVIEW — populated when human review is triggered:
 
-**HUMAN REVIEW:**
+| Field | Example Value |
+|-------|---------------|
+| human_feedback | `"approve" \| "reject" \| "escalate"` |
+| human_notes | Expert corrections or additional context |
 
-```text
-human_feedback "approve" | "reject" | "escalate"
-human_notes Expert corrections or additional context
-```
+### OUTPUT — populated by the final nodes:
 
-**OUTPUT:**
+| Field | Example Value |
+|-------|---------------|
+| migration_guide | Step-by-step migration instructions |
+| final_output | Complete JSON ready for the user |
+| error | Error description if something failed |
 
-```text
-migration_guide Step-by-step migration instructions
-final_output Complete JSON ready for the user
-error Error description if something failed
-```
+### METADATA — system-managed fields:
 
-**METADATA:**
+| Field | Example Value |
+|-------|---------------|
+| thread_id | Unique ID for this analysis run |
+| started_at | Timestamp |
+| total_llm_calls | For cost tracking |
 
-```text
-thread_id Unique ID for this analysis run
-started_at Timestamp
-total_llm_calls For cost tracking
-```
+## Complete Workflow
 
-### Complete Workflow
+The diagram below shows every node, every transition, and every conditional routing decision in the workflow.
 
-```text
-START — func("gitlab", "github", "Dependent Merge Requests")
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ NODE 1: check_cache                             │
-│                                                 │
-│ Check long-term memory store for a previously   │
-│ verified mapping for this exact feature pair.   │
-│ Key: "gitlab:github:dependent_merge_requests"   │
-└─────────────────────────────────────────────────┘
-│
-├── CACHE HIT (human-verified result exists)
-│   └──► Return instantly. No AI calls needed. ──► END
-│
-└── CACHE MISS
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ NODE 2: classify_feature                        │
-│                                                 │
-│ Model: GPT-4o-mini (fast, cheap)                │
-│ Task: Assign the feature to a category          │
-│ Output: feature_category = "SCM"                │
-│         feature_tags = ["merge_requests", ...]  │
-│                                                 │
-│ Why this step? The category is used to filter   │
-│ the vector database search to only relevant     │
-│ sections of the documentation.                  │
-└─────────────────────────────────────────────────┘
-│
-▼ (Fan-Out — both nodes run simultaneously)
-┌──────────────────────────────────────────────────────────┐
-│ PARALLEL EXECUTION                                       │
-│                                                          │
-│ NODE 3: retrieve_source_docs                             │
-│ NODE 4: retrieve_target_docs                             │
-│                                                          │
-│ Both run at the same time.                               │
-│ Total time = max(Node3 time, Node4 time)                 │
-│ Not Node3 time + Node4 time.                             │
-└──────────────────────────────────────────────────────────┘
-│
-▼ (Fan-In — wait for both to complete)
-┌─────────────────────────────────────────────────┐
-│ NODE 5: validate_retrieval                      │
-│                                                 │
-│ Check: Did both retrievals return results?      │
-│ Check: Are similarity scores above 0.70?        │
-│ Check: Do retrieved chunks contain relevant     │
-│ content for this feature?                       │
-│                                                 │
-│ Sets retrieval_quality = "sufficient"           │
-│ OR = "insufficient"                             │
-└─────────────────────────────────────────────────┘
-│
-├── INSUFFICIENT
-│   └──► NODE 5b: expand_search
-│       Generate alternative query phrasings
-│       Try broader search terms
-│       Web search fallback if still empty
-│       └──► Back to analyze_feature
-│
-└── SUFFICIENT
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ NODE 6: analyze_feature                         │
-│                                                 │
-│ Model: GPT-4o (temperature=0.0)                 │
-│ Input: feature_name + source_docs + target_docs │
-│ Technique: Few-shot + Chain-of-Thought          │
-│ Output: MigrationAnalysis (Pydantic model)      │
-│                                                 │
-│ The AI reads both sets of documentation and     │
-│ determines:                                     │
-│ - mapping_type: "full" | "partial" | "none"     │
-│ - github_equivalent: name or null               │
-│ - behavior_differences: list                    │
-│ - workarounds: list                             │
-│ - confidence: float                             │
-│ - citations: URLs from retrieved metadata       │
-└─────────────────────────────────────────────────┘
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ NODE 7: reflect_on_analysis                     │
-│                                                 │
-│ Model: GPT-4o                                   │
-│ Task: The AI reviews its own output             │
-│                                                 │
-│ Questions it asks itself:                       │
-│ - Is the confidence score justified by the      │
-│   documentation that was provided?              │
-│ - Are there behavior differences not mentioned? │
-│ - Are all cited URLs present in the retrieved   │
-│   documentation (not invented)?                 │
-│ - Are there important edge cases missing?       │
-│                                                 │
-│ Output: Revised analysis OR pass-through        │
-└─────────────────────────────────────────────────┘
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ ROUTING DECISION: Confidence Check              │
-│                                                 │
-│ confidence >= 0.8 AND reflection passed         │
-│ └──► generate_guide (proceed)                   │
-│                                                 │
-│ 0.5 <= confidence < 0.8 AND iterations < 2      │
-│ └──► expand_search (retry with more docs)       │
-│                                                 │
-│ confidence < 0.5 OR iterations >= 2             │
-│ └──► human_review (expert input needed)         │
-└─────────────────────────────────────────────────┘
-│
-├── HUMAN REVIEW PATH
-│
-│ ▼
-│ NODE 8: human_review
-│ ⏸ GRAPH PAUSES HERE
-│ Expert sees: retrieved docs + analysis + confidence
-│ Expert provides: approve | reject | escalate
-│ On reject: AI re-analyzes with expert notes
-│ On approve: continue to generate_guide
-│
-└── PROCEED PATH
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ NODE 9: generate_guide                          │
-│                                                 │
-│ Model: GPT-4o (temperature=0.1)                 │
-│ Input: Verified MigrationAnalysis               │
-│ Output:                                         │
-│ - Step-by-step migration instructions           │
-│ - Effort estimate in days                       │
-│ - Risk warnings                                 │
-│ - Code examples where applicable                │
-│ - Manual work required                          │
-└─────────────────────────────────────────────────┘
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ NODE 10: compile_output                         │
-│                                                 │
-│ Assemble all pieces into the final JSON         │
-│ Format documentation citations from metadata    │
-│ Validate all required fields are present        │
-│ Produce the complete MigrationOutput object     │
-└─────────────────────────────────────────────────┘
-│
-▼
-┌─────────────────────────────────────────────────┐
-│ NODE 11: store_in_memory                        │
-│                                                 │
-│ Save the completed analysis to long-term store  │
-│ If human-verified: mark human_verified = true   │
-│ This result will be returned instantly for      │
-│ all future requests for the same feature pair   │
-└─────────────────────────────────────────────────┘
-│
-▼
-END — Return final_output JSON to caller
-```
+````mermaid
+flowchart TD
+    START(["⚫ START\nfunc(source, target, feature)"])
 
+    CHECK_CACHE["<b>check_cache</b>\n\nQuery long-term memory\nkey: source:target:feature"]
 
-### Node Reference Table
+    CACHE_HIT["<b>return_cached_result</b>\n\nHuman-verified mapping\nReturn instantly. No LLM call."]
+
+    CLASSIFY["<b>classify_feature</b>\n\nGPT-4o-mini | temp=0.0\nCategory: SCM | CI_CD | Security | Project"]
+
+    subgraph PARALLEL["⚡ PARALLEL EXECUTION — Fan-Out"]
+        direction LR
+        RET_SRC["<b>retrieve_source_docs</b>\n\nSearch GitLab Index\nHybrid Search (BM25 + Vector)\nMMR | k=3 | threshold=0.70\nContextualCompression"]
+        RET_TGT["<b>retrieve_target_docs</b>\n\nSearch GitHub Index\nHybrid Search (BM25 + Vector)\nMMR | k=3 | threshold=0.70\nContextualCompression"]
+    end
+
+    VALIDATE["<b>validate_retrieval</b>\n\nFan-In: Wait for both retrievals\nCheck: scores > 0.70? docs exist?\nSet retrieval_quality flag"]
+
+    EXPAND["<b>expand_search</b>\n\nMultiQueryRetriever\n3 alternate phrasings\nWeb search fallback"]
+
+    ANALYZE["<b>analyze_feature</b>\n\nGPT-4o | temp=0.0 | Few-shot + CoT\nwith_structured_output(MigrationAnalysis)\nProduces: mapping_type, confidence,\ndifferences, workarounds, citations"]
+
+    REFLECT["<b>reflect_on_analysis</b>\n\nGPT-4o reviews its own output\nChecks: citations valid? confidence justified?\nedge cases missed? differences complete?"]
+
+    CONF{"<b>Confidence\nCheck</b>"}
+
+    HUMAN["<b>human_review</b>\n\n⏸ INTERRUPT — Graph Pauses\nExpert sees: docs + analysis + confidence\nWaits for: approve | reject | escalate"]
+
+    GEN_GUIDE["<b>generate_guide</b>\n\nGPT-4o | temp=0.1\nStep-by-step migration instructions\nEffort estimate | Risks | Code examples"]
+
+    COMPILE["<b>compile_output</b>\n\nAssemble final JSON\nFormat citations from metadata\nValidate completeness"]
+
+    STORE["<b>store_in_memory</b>\n\nSave to long-term store\nKey: source:target:feature\nhuman_verified flag"]
+
+    END_NODE(["⚫ END\nReturn final_output JSON"])
+
+    START --> CHECK_CACHE
+    CHECK_CACHE -->|"CACHE HIT"| CACHE_HIT
+    CHECK_CACHE -->|"CACHE MISS"| CLASSIFY
+    CACHE_HIT -->|"Return instantly"| END_NODE
+
+    CLASSIFY -->|"Fan-Out Parallel"| RET_SRC
+    CLASSIFY -->|"Fan-Out Parallel"| RET_TGT
+    RET_SRC -->|"Fan-In"| VALIDATE
+    RET_TGT -->|"Fan-In"| VALIDATE
+
+    VALIDATE -->|"INSUFFICIENT"| EXPAND
+    VALIDATE -->|"SUFFICIENT"| ANALYZE
+    EXPAND -.->|"Retry with new docs"| ANALYZE
+
+    ANALYZE --> REFLECT
+    REFLECT --> CONF
+
+    CONF -->|"conf >= 0.8"| GEN_GUIDE
+    CONF -->|"conf < 0.5 OR iterations >= 2"| HUMAN
+    CONF -.->|"0.5 <= conf < 0.8\niterations < 2"| EXPAND
+
+    HUMAN -->|"APPROVE"| GEN_GUIDE
+    HUMAN -.->|"REJECT\nre-analyze with notes"| ANALYZE
+
+    GEN_GUIDE --> COMPILE
+    COMPILE --> STORE
+    STORE --> END_NODE
+
+    style START fill:#000000,color:#ffffff,stroke:#000000
+    style END_NODE fill:#000000,color:#ffffff,stroke:#000000
+    style CHECK_CACHE fill:#e1d5e7,stroke:#9673a6
+    style CACHE_HIT fill:#d5e8d4,stroke:#82b366
+    style CLASSIFY fill:#fff2cc,stroke:#d6b656
+    style PARALLEL fill:#fce4e4,stroke:#b85450,color:#b85450
+    style RET_SRC fill:#f8cecc,stroke:#b85450
+    style RET_TGT fill:#f8cecc,stroke:#b85450
+    style VALIDATE fill:#fff2cc,stroke:#d6b656
+    style EXPAND fill:#ffe6cc,stroke:#d79b00
+    style ANALYZE fill:#dae8fc,stroke:#6c8ebf
+    style REFLECT fill:#dae8fc,stroke:#6c8ebf
+    style CONF fill:#fff2cc,stroke:#d6b656
+    style HUMAN fill:#f8cecc,stroke:#b85450,stroke-width:3px
+    style GEN_GUIDE fill:#d5e8d4,stroke:#82b366
+    style COMPILE fill:#d5e8d4,stroke:#82b366
+    style STORE fill:#e1d5e7,stroke:#9673a6
+````
+
+Reading the diagram: Solid arrows are normal transitions that always occur. Dashed arrows are conditional paths that only occur when a retry or rejection happens. The red node with the thick border (human_review) is where the workflow pauses completely and waits for expert input before continuing.
+
+## Node Reference Table
 
 | Node | Model | Purpose | Input | Output |
-|---|---|---|---|---|
+|------|-------|---------|-------|--------|
 | check_cache | None | Check for verified prior result | feature_name | cached result or miss |
 | classify_feature | GPT-4o-mini | Assign feature category | feature_name | feature_category |
 | retrieve_source_docs | None (vector search) | Find GitLab documentation | feature_name, category | source_docs |
@@ -684,12 +602,12 @@ END — Return final_output JSON to caller
 | compile_output | None (code) | Assemble final JSON | all state fields | final_output |
 | store_in_memory | None (database) | Cache verified result | final_output | persisted |
 
-### Failure Handling Per Node
+## Failure Handling Per Node
 
 Every node has a defined failure behavior so the system degrades gracefully rather than crashing.
 
 | Failure Scenario | Detection | Response |
-|---|---|---|
+|------------------|-----------|----------|
 | LLM API timeout | Exception caught | Retry 3x with exponential backoff. Fallback to GPT-4o-mini if all retries fail. |
 | Vector DB unavailable | Connection error | Retry 3x. Check Redis retrieval cache. If cache miss, route to human_review with explanation. |
 | No relevant docs found | All scores below 0.70 | Run expand_search. If still empty, set confidence=0.2 and route to human_review. |
@@ -713,9 +631,10 @@ RAG gives the AI model access to current, specific information by:
 
 This means the AI's answer is grounded in your actual documentation rather than in its potentially outdated training data.
 
-### Why RAG Is Essential Here
+## Why RAG Is Essential Here
 
 GitLab and GitHub documentation is:
+
 - Hundreds of thousands of words across thousands of pages
 - Updated continuously with new features and changes
 - Larger than any AI model's context window (the maximum amount of text it can read at once)
@@ -723,223 +642,189 @@ GitLab and GitHub documentation is:
 
 Without RAG, the system would rely on the AI model's memory of documentation it saw during training. That memory may be incomplete, outdated, or simply wrong. With RAG, every answer is backed by retrieved documentation that the system controls and keeps current.
 
-### Phase 1: Indexing (Offline)
+## Pipeline Overview
+
+The RAG pipeline operates in two distinct phases shown in the diagram below.
+
+````mermaid
+flowchart TB
+
+    subgraph INDEXING["📦 PHASE 1 — INDEXING  (Offline: Run Once, Then Scheduled Weekly)"]
+        direction TB
+
+        subgraph SOURCES["Documentation Sources"]
+            direction LR
+            GL_SRC[("docs.gitlab.com\n(Sitemap Crawl)")]
+            GH_SRC[("docs.github.com\n(Sitemap Crawl)")]
+        end
+
+        LOADER["<b>Document Loader</b>\n(WebBaseLoader / SitemapLoader)\n\nReturns: Document objects\npage_content + metadata"]
+
+        SPLITTER["<b>Text Splitter Strategy</b>\n\nStep 1: MarkdownHeaderTextSplitter\nSplit by ## ### headers\nPreserves section title in metadata\n\nStep 2: RecursiveCharacterTextSplitter\nchunk_size=800 tokens | overlap=150 tokens"]
+
+        META["<b>Metadata Enrichment</b>\n\nplatform: 'gitlab' or 'github'\ncategory: 'cicd' or 'scm' or 'security'\nfeature_name: extracted from header\npage_url: source URL for citations\nindexed_at: timestamp\ncontent_hash: MD5 for incremental updates"]
+
+        EMBED["<b>Embedding Model</b>\ntext-embedding-3-small\n1536 dimensions\nBatched calls (100 chunks per batch)"]
+
+        subgraph STORES["Vector Database — Qdrant"]
+            direction LR
+            VS_GL[("GitLab Vector Index\n(Qdrant)\n~50,000 chunks")]
+            VS_GH[("GitHub Vector Index\n(Qdrant)\n~60,000 chunks")]
+        end
+
+        GL_SRC --> LOADER
+        GH_SRC --> LOADER
+        LOADER --> SPLITTER
+        SPLITTER --> META
+        META --> EMBED
+        EMBED -->|"GitLab chunks"| VS_GL
+        EMBED -->|"GitHub chunks"| VS_GH
+    end
+
+    subgraph RETRIEVAL["🔍 PHASE 2 — RETRIEVAL  (Online: Runs on Every User Request)"]
+        direction TB
+
+        USER_Q["<b>User Query</b>\n'Analyze GitLab Dependent Merge Requests'"]
+
+        Q_EMBED["<b>embed_query()</b>\ntext-embedding-3-small\nquery_vector = [0.21, -0.09, 0.83, ...]"]
+
+        subgraph SEARCH["Hybrid Search Layer"]
+            direction LR
+            ENSEMBLE["<b>EnsembleRetriever</b>\n\nVectorStoreRetriever (weight 0.6)\nSemantic similarity via embeddings\nFinds: conceptually related content\n\nBM25Retriever (weight 0.4)\nKeyword matching (TF-IDF)\nFinds: exact technical term matches\n\nCombined via Reciprocal Rank Fusion"]
+            FILTER["<b>Metadata Filter</b>\n\nGitLab search:\n{platform: 'gitlab', category: 'scm'}\n\nGitHub search:\n{platform: 'github', category: 'scm'}"]
+        end
+
+        COMPRESS["<b>ContextualCompressionRetriever</b>\n\n800-token chunk to 200-token extract\nGPT-4o-mini extracts only relevant parts\nRemoves noise | Saves prompt tokens"]
+
+        RESULTS["<b>Final Retrieved Chunks</b>\nTop 3 GitLab Chunks + Top 3 GitHub Chunks\nEach with: text | similarity_score | page_url\n\nGitLab scores: [0.91, 0.87, 0.79]\nGitHub scores: [0.83, 0.76, 0.71]"]
+
+        USER_Q --> Q_EMBED
+        Q_EMBED --> ENSEMBLE
+        Q_EMBED --> FILTER
+        ENSEMBLE --> COMPRESS
+        FILTER --> COMPRESS
+        COMPRESS --> RESULTS
+    end
+
+    VS_GL -.->|"HNSW ANN Search"| ENSEMBLE
+    VS_GH -.->|"HNSW ANN Search"| ENSEMBLE
+
+    style INDEXING fill:#dae8fc,stroke:#6c8ebf,color:#000
+    style SOURCES fill:#f9f9f9,stroke:#aaaaaa
+    style STORES fill:#f9f9f9,stroke:#aaaaaa
+    style GL_SRC fill:#f8cecc,stroke:#b85450
+    style GH_SRC fill:#d5e8d4,stroke:#82b366
+    style LOADER fill:#dae8fc,stroke:#6c8ebf
+    style SPLITTER fill:#dae8fc,stroke:#6c8ebf
+    style META fill:#dae8fc,stroke:#6c8ebf
+    style EMBED fill:#fff2cc,stroke:#d6b656
+    style VS_GL fill:#f8cecc,stroke:#b85450
+    style VS_GH fill:#d5e8d4,stroke:#82b366
+    style RETRIEVAL fill:#d5e8d4,stroke:#82b366,color:#000
+    style SEARCH fill:#f9f9f9,stroke:#aaaaaa
+    style USER_Q fill:#d5e8d4,stroke:#82b366
+    style Q_EMBED fill:#fff2cc,stroke:#d6b656
+    style ENSEMBLE fill:#d5e8d4,stroke:#82b366
+    style FILTER fill:#d5e8d4,stroke:#82b366
+    style COMPRESS fill:#d5e8d4,stroke:#82b366
+    style RESULTS fill:#fff2cc,stroke:#d6b656
+````
+
+Reading the diagram: The blue section (Phase 1) runs offline and only re-runs when documentation changes. The green section (Phase 2) runs on every user request. Dashed arrows show how the stored vector indexes feed into the live retrieval search at query time.
+
+## Phase 1: Indexing (Offline)
 
 Indexing is the process of reading all documentation, converting it into a searchable format, and storing it in the vector database. This is done once initially and then on a scheduled basis when documentation changes.
 
-```text
-INDEXING PIPELINE
+### Step 1: Document Loading
 
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 1: DOCUMENT LOADING                                     │
-│                                                              │
-│ Source: docs.gitlab.com (via Sitemap Loader)                 │
-│ Source: docs.github.com (via Sitemap Loader)                 │
-│                                                              │
-│ A Sitemap Loader reads the sitemap.xml file that both        │
-│ platforms publish, which lists every documentation page.     │
-│ This ensures complete coverage without manually maintaining  │
-│ a list of URLs.                                              │
-│                                                              │
-│ Output: Raw Document objects                                 │
-│ { page_content: "...", metadata: {url: "..."} }              │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 2: TEXT SPLITTING (CHUNKING)                            │
-│                                                              │
-│ A full documentation page (e.g., 5,000 words) cannot be      │
-│ represented as a single searchable unit. One vector cannot   │
-│ meaningfully represent 5,000 words of content.               │
-│                                                              │
-│ Solution: Split each page into focused chunks.               │
-│ Each chunk covers one concept. One concept = one vector.     │
-│ Searching for that concept retrieves that chunk precisely.   │
-│                                                              │
-│ Strategy — Two-pass splitting:                               │
-│                                                              │
-│ Pass 1: MarkdownHeaderTextSplitter                           │
-│ Both platforms publish documentation as Markdown.            │
-│ Headers (## and ###) mark natural section boundaries.        │
-│ The section on "Dependent Merge Requests" becomes its        │
-│ own chunk. The section title is captured in metadata.        │
-│                                                              │
-│ Pass 2: RecursiveCharacterTextSplitter                       │
-│ For any chunk still too large after Pass 1:                  │
-│ chunk_size = 800 tokens                                      │
-│ chunk_overlap = 150 tokens                                   │
-│                                                              │
-│ The overlap ensures that information at the boundary         │
-│ between two chunks is not lost.                              │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 3: METADATA ENRICHMENT                                  │
-│                                                              │
-│ Before embedding, each chunk is enriched with metadata       │
-│ that enables filtering and citation generation later.        │
-│                                                              │
-│ {                                                            │
-│   "platform": "gitlab" | "github",                           │
-│   "category": "cicd" | "scm" | "security" | "project",       │
-│   "feature_name": Extracted from the section header,         │
-│   "page_url": The source documentation URL,                 │
-│   "section_title": The ## heading text,                     │
-│   "indexed_at": When this chunk was indexed,                │
-│   "content_hash": MD5 hash for change detection             │
-│ }                                                            │
-│                                                              │
-│ The page_url field is particularly important: it is the      │
-│ source of the citation URLs in the final output. These       │
-│ citations come from real metadata, not from AI memory.       │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 4: EMBEDDING                                            │
-│                                                              │
-│ Model: text-embedding-3-small (OpenAI)                       │
-│ Output dimensions: 1,536 numbers per chunk                   │
-│                                                              │
-│ Each chunk of text is converted into a list of 1,536         │
-│ numbers (called a vector or embedding). This vector          │
-│ represents the semantic meaning of the chunk.                │
-│                                                              │
-│ Chunks with similar meanings produce similar vectors.        │
-│ This is what enables semantic search.                        │
-│                                                              │
-│ Batching: Chunks are embedded in batches of 100 to           │
-│ minimize API calls and reduce cost.                          │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 5: VECTOR DATABASE STORAGE                              │
-│                                                              │
-│ Each chunk is stored in Qdrant as:                           │
-│ - The original text (for injection into prompts)             │
-│ - The 1,536-dimensional vector (for similarity search)       │
-│ - The metadata dictionary (for filtering and citations)      │
-│                                                              │
-│ Two separate collections:                                   │
-│ gitlab_docs — All GitLab documentation                       │
-│ github_docs — All GitHub documentation                       │
-└──────────────────────────────────────────────────────────────┘
-```
+Both platforms publish a sitemap.xml file that lists every documentation page. The Sitemap Loader reads this file and downloads every page automatically. This ensures complete documentation coverage without manually maintaining a list of URLs.
 
-**Incremental Updates**
+Each downloaded page becomes a Document object containing the page text and the source URL.
 
-Documentation does not need to be re-indexed from scratch every time. The `content_hash` field in the metadata records an MD5 hash of each chunk's content. When documentation is updated:
+### Step 2: Text Splitting
+
+A full documentation page can contain thousands of words covering many different features and concepts. A single vector cannot meaningfully represent that much content. The page must be split into focused chunks where each chunk covers one concept.
+
+Two splitting passes are applied:
+
+**Pass 1 — MarkdownHeaderTextSplitter:** Both GitLab and GitHub publish their documentation as Markdown. Section headers (marked with ## and ###) define natural boundaries between topics. This splitter creates one chunk per section, preserving the section title in the chunk's metadata.
+
+**Pass 2 — RecursiveCharacterTextSplitter:** Any section that is still too large after Pass 1 is split further. The target size is 800 tokens with a 150-token overlap between adjacent chunks. The overlap ensures that information at the boundary between two chunks is not lost.
+
+### Step 3: Metadata Enrichment
+
+Before converting to vectors, each chunk is tagged with metadata that enables filtering during retrieval and citation generation in the final output.
+
+| Metadata Field | Purpose |
+|---------------|---------|
+| platform | Identifies whether this is a GitLab or GitHub chunk. Used for filtering. |
+| category | The feature domain (cicd, scm, security, project). Used for targeted search. |
+| feature_name | Extracted from the section header. |
+| page_url | The original documentation URL. This becomes the citation in the final output. |
+| section_title | The heading text from the Markdown source. |
+| indexed_at | When this chunk was indexed. Used to surface documentation freshness. |
+| content_hash | MD5 hash of the chunk content. Used to detect changes during incremental updates. |
+
+The page_url field is particularly important. Citation URLs in the final output come directly from this metadata field, not from the AI model's memory. This is how the system produces real, verifiable citations.
+
+### Step 4: Embedding
+
+Each chunk is converted into a list of 1,536 numbers using OpenAI's text-embedding-3-small model. This list of numbers, called a vector or embedding, represents the semantic meaning of the chunk. Chunks that cover similar topics produce similar vectors.
+
+Chunks are sent to the embedding model in batches of 100 to minimise API calls and reduce cost.
+
+### Step 5: Vector Database Storage
+
+Each chunk is stored in Qdrant with three components:
+
+- The original text (used when injecting into AI prompts)
+- The 1,536-dimensional vector (used for similarity search)
+- The metadata dictionary (used for filtering and citations)
+
+Two separate collections are maintained: `gitlab_docs` and `github_docs`.
+
+### Incremental Updates
+
+The `content_hash` field makes incremental updates efficient. When documentation is updated:
 
 1. Crawl the documentation again
-2. Compute new hashes
-3. Compare with stored hashes
-4. Re-embed only chunks whose hash has changed
+2. Compute new hashes for all chunks
+3. Compare with the stored hashes
+4. Re-embed only the chunks whose hash has changed
 
 A typical weekly update touches 5-10% of chunks, making incremental updates significantly more efficient than full re-indexing.
 
-### Phase 2: Retrieval (Online)
+## Phase 2: Retrieval (Online)
 
-Retrieval happens every time a user submits a feature for analysis. The goal is to find the most relevant documentation chunks from both platforms.
+Retrieval happens every time a user submits a feature for analysis.
 
-```text
-RETRIEVAL PIPELINE
+### Step 1: Query Enhancement
 
-User Request: "Analyze GitLab Dependent Merge Requests"
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 1: QUERY ENHANCEMENT                                    │
-│                                                              │
-│ The raw feature name is expanded into a richer query:        │
-│ "Dependent Merge Requests SCM merge ordering blocking        │
-│ sequential dependencies"                                    │
-│                                                              │
-│ Why: The documentation may use different terminology.        │
-│ Expanding the query improves the chance of finding           │
-│ relevant chunks even when terminology differs.               │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 2: QUERY EMBEDDING                                      │
-│                                                              │
-│ The enhanced query is converted to a vector using the        │
-│ same embedding model used during indexing.                   │
-│                                                              │
-│ It is critical that the same model is used for both          │
-│ indexing and retrieval. Different models produce             │
-│ incompatible vector spaces and the search will fail.         │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 3: HYBRID SEARCH                                        │
-│                                                              │
-│ Two search methods are combined:                             │
-│                                                              │
-│ Semantic Search (weight: 0.6)                                │
-│ Finds chunks whose vectors are closest to the query vector   │
-│ Handles: conceptual matches, synonym differences             │
-│ Example: "merge request ordering" finds docs about           │
-│ "dependent MRs" even without exact word match                │
-│                                                              │
-│ Keyword Search / BM25 (weight: 0.4)                          │
-│ Finds chunks that contain the exact query terms              │
-│ Handles: technical names, configuration file names           │
-│ Example: "gitlab-ci.yml" must match exactly                  │
-│                                                              │
-│ Results from both methods are merged using Reciprocal        │
-│ Rank Fusion. Chunks appearing in both result sets rank       │
-│ highest.                                                     │
-│                                                              │
-│ Metadata Filter Applied:                                     │
-│ GitLab search: { platform: "gitlab", category: "scm" }       │
-│ GitHub search: { platform: "github", category: "scm" }       │
-│                                                              │
-│ Both searches run in parallel (fan-out pattern).             │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 4: CONTEXTUAL COMPRESSION                               │
-│                                                              │
-│ Each retrieved chunk may be 800 tokens long.                 │
-│ Only a portion of each chunk is typically relevant           │
-│ to the specific query.                                       │
-│                                                              │
-│ A small AI model (GPT-4o-mini) reads each chunk and          │
-│ extracts only the parts relevant to the query.               │
-│ An 800-token chunk becomes a 150-200 token extract.          │
-│                                                              │
-│ Benefits:                                                    │
-│ - The analysis AI receives focused, relevant information     │
-│ - Less noise means more accurate analysis                    │
-│ - Fewer tokens = lower cost for the analysis step            │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-┌──────────────────────────────────────────────────────────────┐
-│ STEP 5: SCORE THRESHOLD FILTERING                            │
-│                                                              │
-│ Every retrieved chunk has a similarity score (0.0 to 1.0)    │
-│ Chunks below 0.70 similarity are discarded.                  │
-│                                                              │
-│ If no chunks pass the threshold:                             │
-│ retrieval_quality = "insufficient"                           │
-│ → Trigger expand_search node                                 │
-│                                                              │
-│ Final output: Top 3 GitLab chunks + Top 3 GitHub chunks      │
-│ Each with: text | similarity_score | page_url | section      │
-└──────────────────────────────────────────────────────────────┘
-│
-▼
-Inject into analysis prompt:
-<source_docs> ... GitLab chunks ... </source_docs>
-<target_docs> ... GitHub chunks ... </target_docs>
-```
+The raw feature name is expanded into a richer query that includes related terminology. This improves the chance of finding relevant chunks even when the documentation uses different wording than the query.
+
+### Step 2: Query Embedding
+
+The enhanced query is converted to a vector using the same embedding model used during indexing. It is essential that the same model is used for both indexing and retrieval. Different models produce incompatible vector spaces and the similarity search will return meaningless results.
+
+### Step 3: Hybrid Search
+
+Two search methods run in parallel and their results are combined:
+
+- Semantic Search (weight 0.6): Finds chunks whose vectors are closest to the query vector. This catches conceptual matches even when the exact words differ.
+- Keyword Search / BM25 (weight 0.4): Finds chunks that contain the exact query terms. This is important for precise technical names like `gitlab-ci.yml` that must match exactly.
+
+Results from both methods are combined using Reciprocal Rank Fusion. Chunks that appear in both result sets rank highest. A metadata filter is applied to ensure each search only returns chunks from the correct platform.
+
+### Step 4: Contextual Compression
+
+Each retrieved chunk may be 800 tokens long but only a small portion is typically relevant to the specific query. GPT-4o-mini reads each chunk and extracts only the relevant parts, reducing an 800-token chunk to approximately 150-200 tokens. This produces more focused context for the analysis AI and reduces token costs.
+
+### Step 5: Score Threshold Filtering
+
+Chunks with a similarity score below 0.70 are discarded. If no chunks pass this threshold, the `retrieval_quality` flag is set to `insufficient` and the workflow routes to the `expand_search` node for a broader retry.
+
+The final output of retrieval is the top 3 GitLab chunks and top 3 GitHub chunks, each carrying the text, similarity score, and metadata needed for citation generation.
 
 ---
 
