@@ -199,112 +199,144 @@ The system must ground every answer in actual, retrieved documentation from both
 
 ## 5. High-Level System Architecture
 
-### Architecture Overview
+## Architecture Overview
 
 The system is organized into five distinct layers. Each layer has a specific responsibility and communicates with adjacent layers through well-defined interfaces.
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ USER LAYER                                                      │
-│                                                                 │
-│ CLI Tool      REST API (FastAPI)      Web Interface             │
-│                                                                 │
-│ Input: source platform, target platform, feature name           │
-│ Output: Structured JSON + Human-readable migration guide        │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ ORCHESTRATION LAYER                                             │
-│                                                                 │
-│ LangGraph — Migration Analysis Graph                            │
-│                                                                 │
-│ Manages: State | Nodes | Edges | Checkpoints                    │
-│          Conditional routing | Human approval gates             │
-│                                                                 │
-│ LCEL Chains (inside each node)                                  │
-│ prompt | llm | structured_output_parser                         │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-             ┌───────────────┼─────────────────┐
-             ▼               ▼                 ▼
-┌──────────────────┐ ┌──────────────────┐ ┌──────────────────────┐
-│ LLM LAYER        │ │ VECTOR STORE     │ │ MEMORY & CACHE       │
-│                  │ │ LAYER            │ │ LAYER                │
-│                  │ │                  │ │                      │
-│ GPT-4o           │ │ GitLab Index     │ │ PostgreSQL           │
-│ Analysis         │ │ (Qdrant)         │ │ Checkpoints          │
-│ Reflection       │ │ ~50,000 chunks   │ │ (Workflow State)     │
-│ Guide Writing    │ │                  │ │                      │
-│                  │ │                  │ │                      │
-│ GPT-4o-mini      │ │ GitHub Index     │ │ Redis               │
-│ Classification   │ │ (Qdrant)         │ │ Semantic Cache       │
-│ Routing          │ │ ~60,000 chunks   │ │ Retrieval Cache      │
-│ Compression      │ │                  │ │                      │
-│                  │ │ Embedding:       │ │ LangGraph Store      │
-│                  │ │ text-embed-      │ │ Long-term Memory     │
-│                  │ │ 3-small          │ │ (Verified Mappings)  │
-└──────────────────┘ └──────────────────┘ └──────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ OBSERVABILITY LAYER                                             │
-│                                                                 │
-│ LangSmith        Structured Logs        Metrics                 │
-│ (Trace every AI call) (Per-node logs)   Dashboard               │
-│ Evaluation datasets   Cost tracking     Alerting                │
-└─────────────────────────────────────────────────────────────────┘
-```
+The diagram below shows all five layers and the connections between them.
 
+````mermaid
+flowchart TB
 
-### Layer Responsibilities
+    subgraph USER["🖥️ USER LAYER"]
+        direction LR
+        CLI["<b>CLI Interface</b>"]
+        API["<b>REST API</b><br/>(FastAPI)"]
+        WEB["<b>Web UI</b>"]
+        IO["Input: source, target, feature_name<br/>Output: Structured JSON + Migration Guide"]
+    end
 
-#### User Layer
+    subgraph ORCH["⚙️ ORCHESTRATION LAYER"]
+        direction LR
+        LG["<b>LangGraph</b><br/>Migration Analysis Graph<br/><br/>State Management | Nodes | Edges<br/>Checkpoints | Human-in-the-Loop"]
+        LCEL["<b>LCEL Chains</b><br/>(Inside each node)<br/><br/>prompt | llm | parser"]
+        SUP["<b>Supervisor Pattern</b><br/><br/>Orchestrates Worker Agents<br/>Routes based on confidence"]
+    end
+
+    subgraph LLM["🤖 LLM LAYER"]
+        direction LR
+        GPT4O["<b>GPT-4o</b><br/><br/>Analysis | Reflection<br/>Guide Generation<br/>temp=0.0-0.1"]
+        MINI["<b>GPT-4o-mini</b><br/><br/>Classification<br/>Routing<br/>Compression<br/>temp=0.0"]
+    end
+
+    subgraph VECTOR["🔍 VECTOR STORE LAYER"]
+        direction LR
+        GL_IDX["<b>GitLab Index</b><br/>(Qdrant)<br/><br/>~50,000 chunks<br/>text-embedding-3-small"]
+        GH_IDX["<b>GitHub Index</b><br/>(Qdrant)<br/><br/>~60,000 chunks<br/>text-embedding-3-small"]
+    end
+
+    subgraph MEMORY["💾 MEMORY AND CACHE LAYER"]
+        direction LR
+        PG["<b>PostgreSQL</b><br/>Checkpointer<br/><br/>State per node<br/>Resume on crash"]
+        REDIS["<b>Redis</b><br/>Semantic Cache<br/><br/>LLM response cache<br/>TTL: 7 days"]
+        LTM["<b>LangGraph Store</b><br/>Long-term Memory<br/><br/>Human-verified mappings"]
+    end
+
+    subgraph OBS["📊 OBSERVABILITY LAYER"]
+        direction LR
+        LS["<b>LangSmith</b><br/>Tracing | Evaluation | Cost Monitoring"]
+        LOGS["<b>Structured Logging</b><br/>Per-node execution logs"]
+        METRICS["<b>Metrics Dashboard</b><br/>Latency | Cost | Accuracy | Error Rate"]
+    end
+
+    CLI -->|"User Request"| LG
+    API -->|"User Request"| LG
+    WEB -->|"User Request"| LG
+
+    LG -->|"LLM Calls"| GPT4O
+    LG -->|"LLM Calls"| MINI
+    LG -->|"Vector Search"| GL_IDX
+    LG -->|"Vector Search"| GH_IDX
+    LG -->|"Save State"| PG
+    LG -->|"Cache Lookup"| REDIS
+    LG -->|"Verified Mappings"| LTM
+    LG -->|"Auto Trace"| LS
+
+    style USER fill:#dae8fc,stroke:#6c8ebf,color:#000
+    style ORCH fill:#d5e8d4,stroke:#82b366,color:#000
+    style LLM fill:#fff2cc,stroke:#d6b656,color:#000
+    style VECTOR fill:#f8cecc,stroke:#b85450,color:#000
+    style MEMORY fill:#e1d5e7,stroke:#9673a6,color:#000
+    style OBS fill:#f0f0f0,stroke:#666666,color:#000
+
+    style CLI fill:#dae8fc,stroke:#6c8ebf
+    style API fill:#dae8fc,stroke:#6c8ebf
+    style WEB fill:#dae8fc,stroke:#6c8ebf
+    style LG fill:#d5e8d4,stroke:#82b366
+    style LCEL fill:#d5e8d4,stroke:#82b366
+    style SUP fill:#d5e8d4,stroke:#82b366
+    style GPT4O fill:#fff2cc,stroke:#d6b656
+    style MINI fill:#fff2cc,stroke:#d6b656
+    style GL_IDX fill:#f8cecc,stroke:#b85450
+    style GH_IDX fill:#f8cecc,stroke:#b85450
+    style PG fill:#e1d5e7,stroke:#9673a6
+    style REDIS fill:#e1d5e7,stroke:#9673a6
+    style LTM fill:#e1d5e7,stroke:#9673a6
+    style LS fill:#f0f0f0,stroke:#666666
+    style LOGS fill:#f0f0f0,stroke:#666666
+    style METRICS fill:#f0f0f0,stroke:#666666
+````
+
+Reading the diagram: Arrows show the direction of data flow. Each subgraph represents one layer of the system. The Orchestration Layer (green) is the central coordinator that connects all other layers.
+
+## Layer Responsibilities
+
+### User Layer
 
 This is the entry point to the system. Users interact with the system through one of three interfaces:
 
-- **CLI Tool:** For developers who want to run analyses from the command line
-- **REST API:** For automated pipelines and integration with other systems
-- **Web Interface:** For non-technical stakeholders who need a visual experience
+- CLI Tool: For developers who want to run analyses from the command line
+- REST API: For automated pipelines and integration with other systems
+- Web Interface: For non-technical stakeholders who need a visual experience
 
 All three interfaces accept the same input and return the same structured output.
 
-#### Orchestration Layer
+### Orchestration Layer
 
 This is the brain of the system. LangGraph manages the entire multi-step workflow as a directed graph. It decides which step runs next, handles retries when quality is insufficient, pauses for human review when confidence is low, and saves progress so the workflow can recover from failures.
 
 LCEL (LangChain Expression Language) is used inside each individual step to compose the prompt, LLM call, and output parsing into a clean, testable pipeline.
 
-#### LLM Layer
+### LLM Layer
 
 This layer contains the AI models that do the actual reasoning.
 
-- **GPT-4o** is used for complex tasks: analyzing documentation, comparing features, reflecting on output quality, and generating migration guides. It is more capable and more expensive.
-- **GPT-4o-mini** is used for simple tasks: classifying a feature into a category, routing decisions, and compressing retrieved document chunks. It is faster and significantly cheaper.
+- GPT-4o is used for complex tasks: analyzing documentation, comparing features, reflecting on output quality, and generating migration guides. It is more capable and more expensive.
+- GPT-4o-mini is used for simple tasks: classifying a feature into a category, routing decisions, and compressing retrieved document chunks. It is faster and significantly cheaper.
 
 Using the right model for the right task reduces cost by approximately 70-80% compared to using GPT-4o for everything.
 
-#### Vector Store Layer
+### Vector Store Layer
 
 This layer stores the documentation from both platforms in a format that can be searched semantically. When a user asks about "Dependent Merge Requests," this layer finds the most relevant sections of the GitLab and GitHub documentation even if the documentation uses slightly different terminology.
 
 Two separate indexes are maintained — one for GitLab documentation and one for GitHub documentation — to ensure clean, intentional retrieval from each platform.
 
-#### Memory and Cache Layer
+### Memory and Cache Layer
 
 This layer has three distinct components:
 
-- **PostgreSQL Checkpoints:** Every step of the workflow saves its state to PostgreSQL. If the server crashes mid-workflow, the system resumes from the last saved step rather than starting over.
-- **Redis Semantic Cache:** AI model responses are cached. If the same feature is requested again (even with slightly different wording), the cached response is returned instantly at no cost.
-- **LangGraph Long-term Store:** Human-verified mappings are stored permanently. Once an expert has confirmed that "GitLab Snippets map to GitHub Gists," every future request for that mapping returns the verified answer instantly.
+- PostgreSQL Checkpoints: Every step of the workflow saves its state to PostgreSQL. If the server crashes mid-workflow, the system resumes from the last saved step rather than starting over.
+- Redis Semantic Cache: AI model responses are cached. If the same feature is requested again (even with slightly different wording), the cached response is returned instantly at no cost.
+- LangGraph Long-term Store: Human-verified mappings are stored permanently. Once an expert has confirmed that "GitLab Snippets map to GitHub Gists," every future request for that mapping returns the verified answer instantly.
 
-#### Observability Layer
+### Observability Layer
 
 This layer makes the system understandable and improvable in production.
 
-- **LangSmith** traces every AI call, showing exactly what prompt was sent, what response was received, how many tokens were used, and what it cost.
-- **Structured Logs** record the input and output of every workflow step.
-- **Metrics Dashboard** tracks latency, error rates, token costs, and accuracy over time.
+- LangSmith traces every AI call, showing exactly what prompt was sent, what response was received, how many tokens were used, and what it cost.
+- Structured Logs record the input and output of every workflow step.
+- Metrics Dashboard tracks latency, error rates, token costs, and accuracy over time.
 
 ---
 
