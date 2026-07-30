@@ -1182,7 +1182,3 @@ Every AI response is validated against a Pydantic schema before being returned. 
 | **Mapping Type** | The classification of how well a source platform feature maps to the target platform: "full", "partial", or "none". |
 
 ---
-
-*This document is maintained by the Engineering Team and should be updated when the system design changes. All diagrams referenced in this document are available in the project's draw.io file.*
-
-*For questions about this design, contact the Engineering Team via the project Slack channel or through the associated Jira Epic.*
