@@ -1,0 +1,46 @@
+name: fastapi-project
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    image: revanth654/fastapi-project-backend:${IMAGE_TAG:-latest}
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////data/test.db
+      UVICORN_RELOAD: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./test.db:/data/test.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    image: revanth654/fastapi-project-frontend:${IMAGE_TAG:-latest}
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped

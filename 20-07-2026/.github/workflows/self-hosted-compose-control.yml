@@ -1,0 +1,195 @@
+name: Self-Hosted Compose Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Choose whether to start or stop the application."
+        required: true
+        type: choice
+        options:
+          - START
+          - STOP
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-compose-control
+  cancel-in-progress: false
+
+env:
+  IMAGE_TAG: latest
+  BACKEND_URL: http://localhost:8000
+  FRONTEND_URL: http://localhost:8501
+
+jobs:
+  start:
+    name: Start application
+    if: ${{ inputs.action == 'START' }}
+    runs-on: [self-hosted, Windows]
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Docker runtime
+        run: |
+          $ErrorActionPreference = "Stop"
+          docker --version
+          docker compose version
+
+      - name: Write runtime environment
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $requiredSecrets = @{
+            IMAGEKIT_PRIVATE_KEY = "${{ secrets.IMAGEKIT_PRIVATE_KEY }}"
+            IMAGEKIT_PUBLIC_KEY  = "${{ secrets.IMAGEKIT_PUBLIC_KEY }}"
+            IMAGEKIT_URL         = "${{ secrets.IMAGEKIT_URL }}"
+            JWT_SECRET           = "${{ secrets.JWT_SECRET }}"
+          }
+
+          foreach ($name in $requiredSecrets.Keys) {
+            if ([string]::IsNullOrWhiteSpace($requiredSecrets[$name])) {
+              throw "Required secret '$name' is missing. Add it in GitHub repository or environment secrets."
+            }
+          }
+
+          @"
+          IMAGEKIT_PRIVATE_KEY=${{ secrets.IMAGEKIT_PRIVATE_KEY }}
+          IMAGEKIT_PUBLIC_KEY=${{ secrets.IMAGEKIT_PUBLIC_KEY }}
+          IMAGEKIT_URL=${{ secrets.IMAGEKIT_URL }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          "@ | ForEach-Object { $_.TrimStart() } | Set-Content -Path ".env" -Encoding UTF8
+
+      - name: Log in to Docker Hub if credentials work
+        run: |
+          $ErrorActionPreference = "Continue"
+          $dockerHubUsername = "${{ secrets.DOCKERHUB_USERNAME }}"
+          $dockerHubToken = "${{ secrets.DOCKERHUB_TOKEN }}"
+
+          if ([string]::IsNullOrWhiteSpace($dockerHubUsername) -or [string]::IsNullOrWhiteSpace($dockerHubToken)) {
+            Write-Warning "Docker Hub credentials are not configured. Continuing without login; public images can still be pulled."
+            exit 0
+          }
+
+          $dockerHubToken | docker login --username $dockerHubUsername --password-stdin
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Docker Hub login failed. Continuing without login; fix DOCKERHUB_USERNAME/DOCKERHUB_TOKEN if the images are private or pull rate limits apply."
+            docker logout | Out-Null
+            exit 0
+          }
+
+          Write-Host "Docker Hub login succeeded."
+
+      - name: Pull latest images
+        run: |
+          $ErrorActionPreference = "Stop"
+          docker compose pull
+
+      - name: Start containers
+        run: |
+          $ErrorActionPreference = "Stop"
+          docker compose up -d --no-build --remove-orphans
+          docker compose ps
+
+      - name: Wait for backend and frontend health
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Wait-HttpOk {
+            param(
+              [Parameter(Mandatory = $true)][string]$Url,
+              [Parameter(Mandatory = $true)][string]$Name
+            )
+
+            for ($attempt = 1; $attempt -le 60; $attempt++) {
+              try {
+                $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
+                  Write-Host "$Name is healthy at $Url"
+                  return
+                }
+              } catch {
+                Write-Host "Waiting for $Name ($attempt/60): $($_.Exception.Message)"
+              }
+
+              Start-Sleep -Seconds 5
+            }
+
+            docker compose ps
+            docker compose logs --tail 120
+            throw "$Name did not become healthy at $Url"
+          }
+
+          Wait-HttpOk -Url "${{ env.BACKEND_URL }}/health" -Name "Backend"
+          Wait-HttpOk -Url "${{ env.FRONTEND_URL }}/_stcore/health" -Name "Frontend"
+
+      - name: Display application URLs
+        run: |
+          "Backend:  ${{ env.BACKEND_URL }}" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "Frontend: ${{ env.FRONTEND_URL }}" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+  approval:
+    name: Manual approval before shutdown
+    if: ${{ inputs.action == 'START' }}
+    needs: start
+    runs-on: ubuntu-latest
+    environment:
+      name: local-verification
+    steps:
+      - name: Await reviewer approval
+        run: |
+          echo "Application is running on the self-hosted runner."
+          echo "Approve this environment when you are ready to stop it."
+
+  stop-after-approval:
+    name: Stop application after approval
+    if: ${{ inputs.action == 'START' }}
+    needs: approval
+    runs-on: [self-hosted, Windows]
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Stop containers
+        run: |
+          $ErrorActionPreference = "Continue"
+          if (-not (Test-Path ".env")) {
+            Copy-Item ".env.example" ".env"
+          }
+
+          docker compose down --remove-orphans
+          docker network prune --force
+          docker compose ps
+
+  stop:
+    name: Stop application
+    if: ${{ inputs.action == 'STOP' }}
+    runs-on: [self-hosted, Windows]
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Stop containers
+        run: |
+          $ErrorActionPreference = "Continue"
+          if (-not (Test-Path ".env")) {
+            Copy-Item ".env.example" ".env"
+          }
+
+          docker compose down --remove-orphans
+          docker network prune --force
+          docker compose ps
