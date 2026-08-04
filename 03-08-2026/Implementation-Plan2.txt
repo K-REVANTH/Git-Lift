@@ -1,0 +1,343 @@
+=======================================================================
+IMPLEMENTATION PLAN 2 — LangGraph Workflow + Direct Document Fetch
+=======================================================================
+ 
+WHAT THIS PHASE DELIVERS
+=======================================================================
+ 
+The same direct document fetch approach from Phase 1, now orchestrated
+by a LangGraph directed graph. This adds retry loops when quality is
+insufficient, conditional routing based on confidence scores,
+human-in-the-loop review for low-confidence cases, crash recovery via
+PostgreSQL checkpoints, and a FastAPI REST API.
+ 
+The document acquisition strategy does NOT change.
+Only the orchestration layer is upgraded.
+ 
+WHAT CHANGES FROM PHASE 1
+=======================================================================
+ 
+  Phase 1 (LCEL Linear):
+    classify → fetch → analyze → guide → compile
+ 
+  Phase 2 (LangGraph):
+    check_cache → classify → fetch_source + fetch_target (PARALLEL)
+    → validate → analyze → reflect → confidence_routing
+    → human_review (if needed) → generate_guide → compile → store
+ 
+FULL GRAPH STRUCTURE:
+ 
+  START
+    │
+    ▼
+  [check_cache] ──── CACHE HIT ──────────────────────► END
+    │ CACHE MISS
+    ▼
+  [classify_feature]             ← GPT-4o-mini
+    │
+    ├──────────────────────────────────┐
+    ▼                                  ▼
+  [fetch_source_docs]         [fetch_target_docs]
+  (HTTP — GitLab)             (HTTP — GitHub)
+  PARALLEL                    PARALLEL
+    │                                  │
+    └──────────────┬───────────────────┘
+                   │ Fan-In
+                   ▼
+          [validate_content]
+                   │
+        ┌──────────┴──────────┐
+        │ FAILED               │ SUFFICIENT
+        ▼                      ▼
+   [human_review]        [analyze_feature]      ← GPT-4o
+        │                      │
+        │               [reflect_on_analysis]   ← GPT-4o
+        │                      │
+        │               [confidence_check]
+        │                      │
+        │       ┌──────────────┼──────────────┐
+        │  conf≥0.8     0.5≤conf<0.8      conf<0.5
+        │       │        retry loop       OR iter≥2
+        │       │              │               │
+        │       │    [fetch_source_docs]  [human_review]
+        │       │    [fetch_target_docs]  ⏸ INTERRUPT
+        │       │    (retry with new      Expert reviews
+        │       │     attempt)                 │
+        │       ◄──────────────────────────────┘ APPROVE
+        │       │
+        └──────►▼
+          [generate_guide]                ← GPT-4o
+                │
+                ▼
+          [compile_output]
+                │
+                ▼
+          [store_in_memory]
+                │
+                ▼
+               END
+ 
+NEW COMPONENTS IN PHASE 2
+=======================================================================
+ 
+  LangGraph                  — Directed graph orchestration
+  AsyncPostgresSaver         — Checkpoint every node to PostgreSQL
+  LangGraph InMemoryStore    — Long-term memory (dev); PostgreSQL (prod)
+  LangGraph interrupt()      — Pause graph for human review
+  FastAPI                    — REST API to expose graph execution
+  reflect_on_analysis chain  — GPT-4o reviews its own output
+  check_cache node           — Skip re-analysis if verified result exists
+  store_in_memory node       — Save verified results permanently
+ 
+DELIVERY TIMELINE
+=======================================================================
+ 
+  Week 1:  LangGraph graph skeleton, state schema, node stubs
+  Week 2:  Parallel fetch, validate, confidence routing, reflection
+  Week 3:  Human review interrupt, PostgreSQL checkpoints, FastAPI
+ 
+UPGRADE TRIGGERS
+=======================================================================
+ 
+  - Phase 1 showing unacceptable analysis quality variance
+  - Multiple features need human review with no gate to catch them
+  - A migration failure traced back to unreviewed low-confidence analysis
+  - Workflow takes long enough that crash recovery is needed
+ 
+=======================================================================
+COPILOT IMPLEMENTATION PROMPT — PHASE 2
+=======================================================================
+ 
+You are implementing Phase 2 of a GitLab → GitHub Migration Assistant.
+This upgrades the Phase 1 LangChain LCEL pipeline to a LangGraph
+directed graph. Document fetching stays as direct HTTP GET.
+What changes: orchestration, retry loops, parallel execution,
+human review, crash recovery, REST API.
+ 
+READ THIS ENTIRE PROMPT BEFORE WRITING ANY CODE.
+ 
+-----------------------------------------------------------------------
+WHAT PHASE 2 ADDS OVER PHASE 1
+-----------------------------------------------------------------------
+ 
+  ADDED NODES:
+    check_cache          — skip re-analysis if verified result exists
+    validate_content     — quality gate before sending to LLM
+    reflect_on_analysis  — GPT-4o reviews its own output for errors
+    human_review         — pause graph, wait for expert input
+    store_in_memory      — save verified results to long-term memory
+ 
+  ADDED CAPABILITIES:
+    Parallel fetch       — GitLab and GitHub docs fetched simultaneously
+    Confidence routing   — high/medium/low confidence takes different path
+    Retry loop           — medium confidence retries up to 2 times
+    Human interrupt      — low confidence pauses for expert review
+    Crash recovery       — PostgreSQL checkpoints resume after failure
+    REST API             — FastAPI exposes graph via HTTP endpoints
+ 
+  UNCHANGED FROM PHASE 1:
+    fetch_source_docs    — still HTTP GET to docs.gitlab.com
+    fetch_target_docs    — still HTTP GET to docs.github.com
+    classify_feature     — unchanged chain
+    analyze_feature      — unchanged chain
+    generate_guide       — unchanged chain
+    All Pydantic schemas — unchanged
+ 
+-----------------------------------------------------------------------
+EXACT PROJECT STRUCTURE TO CREATE
+-----------------------------------------------------------------------
+ 
+migration_assistant/
+├── .env
+├── .env.example
+├── requirements.txt
+├── README.md
+├── pytest.ini
+├── main.py
+├── api.py
+├── config.py
+├── models/
+│   ├── __init__.py
+│   └── schemas.py
+├── fetchers/
+│   ├── __init__.py
+│   └── doc_fetcher.py
+├── chains/
+│   ├── __init__.py
+│   ├── classifier.py
+│   ├── analyzer.py
+│   ├── reflector.py
+│   └── guide_generator.py
+├── graph/
+│   ├── __init__.py
+│   ├── state.py
+│   ├── nodes.py
+│   ├── edges.py
+│   └── builder.py
+├── memory/
+│   ├── __init__.py
+│   └── store.py
+└── tests/
+    ├── __init__.py
+    ├── test_state.py
+    ├── test_nodes.py
+    ├── test_edges.py
+    ├── test_graph.py
+    └── test_api.py
+ 
+-----------------------------------------------------------------------
+DEPENDENCIES — requirements.txt
+-----------------------------------------------------------------------
+ 
+langchain==0.3.25
+langchain-openai==0.3.16
+langchain-community==0.3.24
+langgraph==0.4.7
+langgraph-checkpoint-postgres==2.0.21
+langsmith==0.3.45
+pydantic==2.11.4
+pydantic-settings==2.9.1
+httpx==0.28.1
+beautifulsoup4==4.13.4
+python-dotenv==1.1.0
+fastapi==0.115.12
+uvicorn==0.34.2
+psycopg[binary,pool]==3.2.9
+pytest==8.3.5
+pytest-asyncio==0.26.0
+rich==14.0.0
+ 
+-----------------------------------------------------------------------
+FILE: pytest.ini
+-----------------------------------------------------------------------
+ 
+[pytest]
+asyncio_mode = auto
+ 
+-----------------------------------------------------------------------
+FILE: config.py
+-----------------------------------------------------------------------
+ 
+Extend Phase 1 config with these additional fields:
+  postgres_connection_string: str
+  api_host: str = "0.0.0.0"
+  api_port: int = 8000
+  confidence_threshold_high: float = 0.8
+  confidence_threshold_low: float = 0.5
+  max_iterations: int = 2
+  human_review_timeout_hours: int = 48
+ 
+-----------------------------------------------------------------------
+FILE: models/schemas.py
+-----------------------------------------------------------------------
+ 
+Keep all Phase 1 schemas unchanged. Add these new schemas:
+ 
+1. ContentValidation
+   Fields:
+     gitlab_docs_ok: bool
+     github_docs_ok: bool
+     gitlab_doc_count: int
+     github_doc_count: int
+     quality_flag: Literal["sufficient", "failed"]
+ 
+2. ReflectionResult
+   Fields:
+     issues_found: bool
+     issues: list[str]
+     revised_confidence: float  (ge=0.0, le=1.0)
+     passed: bool
+ 
+3. HumanReviewRequest
+   Fields:
+     thread_id: str
+     feature_name: str
+     analysis: MigrationAnalysis
+     confidence: float
+     reason_for_review: str
+     requested_at: datetime
+ 
+4. HumanReviewResponse
+   Fields:
+     thread_id: str
+     decision: Literal["approve", "reject", "escalate"]
+     notes: str | None
+     reviewed_by: str
+     reviewed_at: datetime
+ 
+5. AnalysisStatus
+   Fields:
+     thread_id: str
+     status: Literal["running", "awaiting_review", "completed", "failed"]
+     result: FinalOutput | None
+     error: str | None
+ 
+-----------------------------------------------------------------------
+FILE: graph/state.py
+-----------------------------------------------------------------------
+ 
+Define MigrationState as a TypedDict with ALL of these fields:
+ 
+  # Input fields
+  feature_name: str
+  source_platform: str
+  target_platform: str
+  feature_description: str | None
+ 
+  # Classification fields
+  feature_category: str | None
+  feature_tags: list[str]
+  suggested_gitlab_urls: list[str]
+  suggested_github_urls: list[str]
+ 
+  # Fetched document fields
+  # Use Annotated with operator.add so parallel nodes merge correctly
+  gitlab_docs: Annotated[list[dict], operator.add]
+  github_docs: Annotated[list[dict], operator.add]
+  content_quality: str | None   # "sufficient" | "failed"
+ 
+  # Analysis fields
+  analysis: dict | None         # serialized MigrationAnalysis
+  confidence: float
+  iterations: int
+ 
+  # Reflection fields
+  reflection: dict | None       # serialized ReflectionResult
+ 
+  # Human review fields
+  human_feedback: str | None    # "approve" | "reject" | "escalate"
+  human_notes: str | None
+ 
+  # Output fields
+  migration_guide: dict | None  # serialized MigrationGuide
+  final_output: dict | None
+  error: str | None
+ 
+  # Metadata fields
+  thread_id: str
+  started_at: str
+  total_llm_calls: int
+  cache_hit: bool
+ 
+Use Annotated[list[dict], operator.add] for gitlab_docs and github_docs.
+This tells LangGraph to MERGE the lists when parallel nodes both write
+to these fields, rather than overwriting one with the other.
+ 
+-----------------------------------------------------------------------
+FILE: graph/nodes.py
+-----------------------------------------------------------------------
+ 
+Implement ALL node functions as async. Each function signature:
+  async def node_name(state: MigrationState) -> dict
+ 
+Each function returns ONLY the state fields it modifies.
+Never return the full state. Only return changed fields.
+ 
+NODE 1: check_cache
+  - Call memory_store.get(key) where key is built from
+    source:target:feature_name (lowercased, spaces replaced with _)
+  - If found with human_verified=True:
+    return {"final_output": cached_result, "cache_hit": True}
+  - If not found:
+    return {"cache_hit": False}
+  - Log at INFO: "Cache check for {feature_name}: HIT
