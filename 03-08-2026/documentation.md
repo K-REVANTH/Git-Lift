@@ -2,7 +2,8 @@
 ## Stakeholder Presentation — Implementation Framework
 
 **Version:** 1.0  
-**Date:** 2026-08-03  
+**Date:** 2026-08-04  
+**Status:** Pre-Implementation Planning  
 **Scope:** GitLab → GitHub (extensible to Azure DevOps, Bitbucket, Perforce)
 
 ---
@@ -26,7 +27,7 @@ When an enterprise migrates from one Source Code Management (SCM) platform to an
 
 ### Design Philosophy
 
-The system uses a **three-layer architecture** with a strict separation of concerns:
+The proposed system will use a **three-layer architecture** with a strict separation of concerns:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -116,7 +117,7 @@ capability_kb/
 
 The taxonomy is the single source of truth for what capabilities exist. Every platform YAML must map to a canonical taxonomy ID. This prevents drift between platform descriptions.
 
-Current taxonomy covers **8 categories** and **54 individual capabilities**:
+Proposed taxonomy will cover **8 categories** and **54+ individual capabilities**:
 
 | Category | Capability IDs | Examples |
 |---|---|---|
@@ -232,22 +233,22 @@ A generated parity report contains five mandatory sections:
 
 ## 5. Implementation Phases
 
-### Phase 1 — Core Engine (Current State)
-**Duration:** Completed  
-**Goal:** Prove the KB + deterministic comparison + LLM synthesis architecture works end to end.
+### Phase 1 — Core Engine & Knowledge Base Foundation
+**Duration:** 3–4 weeks  
+**Goal:** Build and validate the KB + deterministic comparison + LLM synthesis architecture end to end.
 
 | Deliverable | Status |
 |---|---|
-| `parity_agent.py` — full orchestrator with CLI | ✅ Complete |
-| `capability_taxonomy.yaml` — 54-capability master catalog | ✅ Complete |
-| `platforms/gitlab.yaml` + `platforms/github.yaml` | ✅ Complete |
-| `known_gaps.yaml` — GitLab→GitHub gap library | ✅ Complete |
-| `prompts/bedrock_prompts.yaml` — prompt templates | ✅ Complete |
-| Sample output (GitLab→GitHub) | ✅ Complete |
-| Architecture comparison document | ✅ Complete |
+| `parity_agent.py` — full orchestrator with CLI | 🔲 Planned |
+| `capability_taxonomy.yaml` — 54-capability master catalog | 🔲 Planned |
+| `platforms/gitlab.yaml` + `platforms/github.yaml` | 🔲 Planned |
+| `known_gaps.yaml` — GitLab→GitHub gap library | 🔲 Planned |
+| `prompts/bedrock_prompts.yaml` — prompt templates | 🔲 Planned |
+| End-to-end test: GitLab→GitHub parity report | 🔲 Planned |
+| Architecture validation document | 🔲 Planned |
 
-**What the current system can do:**  
-Run `python parity_agent.py gitlab github` and receive a full parity report with hard blockers, behavioral differences, and workaround guidance.
+**What Phase 1 will deliver:**  
+A working command-line tool: `python parity_agent.py gitlab github` will output a comprehensive parity report with hard blockers, behavioral differences, workarounds, and executive summary.
 
 ---
 
@@ -621,14 +622,14 @@ END OF IMPLEMENTATION PROMPT
 
 ## 9. Appendix — Current vs. Target State Summary
 
-| Dimension | Phase 1 (Current) | Phase 3 (Target) |
+| Dimension | Phase 1 (Foundation) | Phase 3 (Mature) |
 |---|---|---|
 | Platforms supported | GitLab, GitHub | + Azure DevOps, Bitbucket |
-| Capabilities covered | 54 (GitLab→GitHub) | 54+ with confidence tiers |
+| Capabilities covered | 54 (GitLab→GitHub baseline) | 70+ with confidence tiers |
 | Output formats | Markdown only | Markdown + JSON |
 | Scope filtering | Full scan only | Per-category subset |
 | LLM call cost | ~$0.03 per report | ~$0.03 (cached: $0.00) |
-| Test coverage | 0% | >80% on comparison logic |
-| CI/CD gap coverage | Minimal | Full |
-| False negative transparency | None | Explicit "Not Covered" section |
-| KB maintenance process | Ad hoc | Documented runbook + CI gate |
+| Test coverage | Unit tests on comparison engine | >80% on all Python layers |
+| CI/CD gap coverage | Basic | Comprehensive |
+| False negative transparency | Supported but basic | Explicit "Not Covered" section |
+| KB maintenance process | Manual with guidelines | Documented runbook + CI gate |
