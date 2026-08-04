@@ -1,0 +1,326 @@
+=======================================================================
+IMPLEMENTATION PLAN 1 — LangChain Linear Pipeline + Direct Document Fetch
+=======================================================================
+ 
+WHAT THIS PHASE DELIVERS
+=======================================================================
+ 
+A working command-line tool that accepts a GitLab feature name, fetches
+the relevant documentation pages from both platforms directly via HTTP,
+and returns a structured JSON analysis with citations.
+ 
+No vector database. No workflow graph. No infrastructure beyond an
+OpenAI API key.
+ 
+THE PIPELINE (linear, no loops, no branching):
+ 
+  User Input
+      │
+      ▼
+  classify_feature()        ← GPT-4o-mini: assigns category + likely doc URLs
+      │
+      ▼
+  fetch_source_docs()       ← HTTP GET: docs.gitlab.com pages
+  fetch_target_docs()       ← HTTP GET: docs.github.com pages
+      │
+      ▼
+  analyze_feature()         ← GPT-4o: reads both doc sets, structured output
+      │
+      ▼
+  generate_guide()          ← GPT-4o: writes step-by-step migration guide
+      │
+      ▼
+  compile_output()          ← Assembles final validated JSON
+      │
+      ▼
+  Structured JSON Output
+ 
+TECHNOLOGY STACK
+=======================================================================
+ 
+  LangChain LCEL       — Linear pipeline composition (prompt | llm | parser)
+  GPT-4o               — Core analysis and guide generation
+  GPT-4o-mini          — Feature classification (15x cheaper)
+  httpx                — Async HTTP document fetching
+  BeautifulSoup4       — HTML parsing and content extraction
+  Pydantic v2          — Structured, validated output schemas
+  LangSmith            — Automatic tracing of every AI call
+  Python CLI           — argparse-based command line interface
+  pytest               — Unit and integration tests
+ 
+WHAT IS INTENTIONALLY NOT BUILT
+=======================================================================
+ 
+  - No vector database (no Qdrant, no embeddings, no indexing)
+  - No Redis cache
+  - No retry loops
+  - No conditional branching based on confidence
+  - No human review gate
+  - No crash recovery
+  - No LangGraph
+  - No FastAPI
+ 
+LIMITATIONS AND UPGRADE TRIGGERS
+=======================================================================
+ 
+  Limitation              Symptom                    Upgrade Trigger
+  ─────────────────────   ────────────────────────   ─────────────────────
+  No retry logic          Low-confidence output      Quality varies too much
+                          returned to user as-is
+  No human review gate    Wrong analyses shipped     High-stakes decisions
+                          without validation         need oversight
+  No loop capability      Cannot re-fetch if first   Multiple fetch failures
+                          fetch fails                per day
+  Higher token cost       Full pages = 10K-40K       Cost per analysis is
+                          tokens per call            unacceptable
+  No caching              Every request refetches    Same features queried
+                          and re-analyzes            repeatedly
+ 
+DELIVERY TIMELINE
+=======================================================================
+ 
+  Day 1-2:  Project setup, environment, LangSmith, base LCEL chain
+  Day 3-4:  Document fetcher, HTML parser, prompt design
+  Day 5-6:  Structured output, output schema, end-to-end test
+  Day 7:    CLI interface, error handling, README
+ 
+=======================================================================
+COPILOT IMPLEMENTATION PROMPT — PHASE 1
+=======================================================================
+ 
+You are implementing Phase 1 of a GitLab → GitHub Migration Assistant.
+This is a LangChain LCEL linear pipeline with direct document fetching.
+No vector database. No LangGraph. No Redis. No PostgreSQL.
+ 
+READ THIS ENTIRE PROMPT BEFORE WRITING ANY CODE.
+ 
+-----------------------------------------------------------------------
+WHAT YOU ARE BUILDING
+-----------------------------------------------------------------------
+ 
+A Python application that:
+1. Accepts a GitLab feature name as input
+2. Classifies it into a category using GPT-4o-mini
+3. Fetches relevant documentation from docs.gitlab.com and docs.github.com
+4. Analyzes both doc sets using GPT-4o with structured output
+5. Generates a step-by-step migration guide
+6. Returns a validated Pydantic JSON object
+7. Traces everything to LangSmith automatically
+ 
+-----------------------------------------------------------------------
+EXACT PROJECT STRUCTURE TO CREATE
+-----------------------------------------------------------------------
+ 
+migration_assistant/
+├── .env
+├── .env.example
+├── requirements.txt
+├── README.md
+├── main.py
+├── config.py
+├── models/
+│   ├── __init__.py
+│   └── schemas.py
+├── chains/
+│   ├── __init__.py
+│   ├── classifier.py
+│   ├── analyzer.py
+│   └── guide_generator.py
+├── fetchers/
+│   ├── __init__.py
+│   └── doc_fetcher.py
+├── pipeline/
+│   ├── __init__.py
+│   └── migration_pipeline.py
+└── tests/
+    ├── __init__.py
+    ├── test_schemas.py
+    ├── test_fetcher.py
+    ├── test_classifier.py
+    ├── test_analyzer.py
+    └── test_pipeline.py
+ 
+-----------------------------------------------------------------------
+DEPENDENCIES — requirements.txt
+-----------------------------------------------------------------------
+ 
+langchain==0.3.25
+langchain-openai==0.3.16
+langchain-community==0.3.24
+langsmith==0.3.45
+pydantic==2.11.4
+pydantic-settings==2.9.1
+httpx==0.28.1
+beautifulsoup4==4.13.4
+python-dotenv==1.1.0
+pytest==8.3.5
+pytest-asyncio==0.26.0
+rich==14.0.0
+ 
+-----------------------------------------------------------------------
+FILE: .env.example
+-----------------------------------------------------------------------
+ 
+OPENAI_API_KEY=your_openai_api_key_here
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_langsmith_api_key_here
+LANGCHAIN_PROJECT=migration-assistant-phase1
+ 
+-----------------------------------------------------------------------
+FILE: config.py
+-----------------------------------------------------------------------
+ 
+Use pydantic-settings BaseSettings to load and validate all environment
+variables at startup.
+ 
+Fields:
+  openai_api_key: str
+  langchain_tracing_v2: bool = True
+  langchain_api_key: str
+  langchain_project: str = "migration-assistant-phase1"
+ 
+Raise a clear, descriptive error at startup if any required field is
+missing. Export a single module-level instance: settings = Settings()
+ 
+-----------------------------------------------------------------------
+FILE: models/schemas.py
+-----------------------------------------------------------------------
+ 
+Define these Pydantic v2 models with
+model_config = ConfigDict(validate_assignment=True) on each:
+ 
+1. FeatureInput
+   Fields:
+     feature_name: str
+     source_platform: str = "gitlab"
+     target_platform: str = "github"
+     feature_description: str | None = None
+ 
+2. FetchedDocument
+   Fields:
+     url: str
+     content: str
+     platform: str
+     fetch_success: bool
+     error_message: str | None = None
+     word_count: int
+ 
+3. FeatureClassification
+   Fields:
+     feature_category: Literal["SCM", "CI_CD", "Security", "Project", "Other"]
+     feature_tags: list[str]
+     suggested_gitlab_urls: list[str]
+     suggested_github_urls: list[str]
+     reasoning: str
+ 
+4. MigrationAnalysis
+   Fields:
+     mapping_type: Literal["full", "partial", "none"]
+     github_equivalent: str | None
+     confidence: float  (Field with ge=0.0, le=1.0)
+     summary: str
+     behavior_differences: list[str]
+     workarounds: list[str]
+     manual_effort_required: str
+     citations: dict  (keys "gitlab" and "github", each list[str])
+     reasoning: str
+ 
+5. MigrationGuide
+   Fields:
+     impact: Literal["low", "medium", "high"]
+     effort_days: int
+     steps: list[str]
+     risks: list[str]
+     prerequisites: list[str]
+ 
+6. FinalOutput
+   Fields:
+     feature: FeatureInput
+     classification: FeatureClassification
+     fetched_documents: list[FetchedDocument]
+     analysis: MigrationAnalysis
+     guide: MigrationGuide
+     analyzed_at: datetime
+     model_used: str
+     total_tokens_used: int
+     source_docs_count: int
+     target_docs_count: int
+ 
+-----------------------------------------------------------------------
+FILE: fetchers/doc_fetcher.py
+-----------------------------------------------------------------------
+ 
+Implement an async DocFetcher class.
+ 
+Method: async fetch_page(url: str, platform: str) -> FetchedDocument
+  - Use httpx.AsyncClient with timeout=30 seconds
+  - Set User-Agent header to "MigrationAssistant/1.0"
+  - On HTTP error: return FetchedDocument with fetch_success=False,
+    error_message set, content="", word_count=0
+  - On success: parse HTML with BeautifulSoup
+  - Extract main content using these selectors in order:
+    article, main, .content, .markdown-body, body
+  - Remove script, style, nav, header, footer tags before extracting text
+  - Set word_count = len(content.split())
+  - Return FetchedDocument with fetch_success=True
+ 
+Method: async fetch_multiple(urls: list[str], platform: str) -> list[FetchedDocument]
+  - Use asyncio.gather to fetch all URLs concurrently
+  - Return list of FetchedDocument (including failures)
+  - Never raise exceptions. Always return FetchedDocument.
+ 
+Log fetch success/failure at INFO level using Python logging.
+Log URL and response size at DEBUG level.
+ 
+-----------------------------------------------------------------------
+FILE: chains/classifier.py
+-----------------------------------------------------------------------
+ 
+Implement classify_feature() using LCEL.
+ 
+Chain: classification_prompt | gpt4o_mini_model | PydanticOutputParser(FeatureClassification)
+ 
+Use ChatOpenAI(model="gpt-4o-mini", temperature=0.0)
+ 
+Use PydanticOutputParser (NOT with_structured_output) because this
+chain needs {format_instructions} injected into the prompt.
+ 
+System prompt (use exactly this):
+"You are an expert in both GitLab and GitHub platform features.
+Your job is to classify a GitLab feature and identify the most likely
+documentation URLs for both platforms.
+ 
+You must respond with a JSON object matching this exact schema:
+{format_instructions}
+ 
+Rules:
+- suggested_gitlab_urls must be real docs.gitlab.com URLs
+- suggested_github_urls must be real docs.github.com URLs
+- Provide 2-3 URLs per platform, ordered by relevance
+- feature_tags should be lowercase snake_case strings
+- reasoning must explain your URL choices briefly"
+ 
+Human prompt:
+"Classify this GitLab feature and identify documentation URLs:
+Feature: {feature_name}
+Description: {feature_description}"
+ 
+Function signature:
+  def classify_feature(feature_name: str,
+                       feature_description: str = "") -> FeatureClassification
+ 
+Decorate with @traceable from langsmith.
+ 
+-----------------------------------------------------------------------
+FILE: chains/analyzer.py
+-----------------------------------------------------------------------
+ 
+Implement analyze_feature() using LCEL.
+ 
+Chain: analysis_prompt | gpt4o_model | model.with_structured_output(MigrationAnalysis)
+ 
+Use ChatOpenAI(model="gpt-4o", temperature=0.0)
+ 
+System prompt (use exactly this):
+"You are a senior DevOps architect who has led 50+ enterprise migrations
+from GitLab to GitHub. You have deep expertise in both platforms.
