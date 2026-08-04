@@ -1,0 +1,339 @@
+=======================================================================
+IMPLEMENTATION PLAN 3 — LangGraph Workflow + RAG + Cache
+=======================================================================
+ 
+WHAT THIS PHASE DELIVERS
+=======================================================================
+ 
+The LangGraph workflow from Phase 2 with the document acquisition layer
+replaced by a full RAG pipeline. Documentation is indexed once into
+Qdrant. Every query retrieves only the 3 most relevant compressed chunks
+(~1,200 tokens) instead of full pages (10,000–40,000 tokens).
+Redis semantic cache serves repeat queries at near-zero cost.
+ 
+WHAT CHANGES FROM PHASE 2
+=======================================================================
+ 
+  Phase 2 node               Phase 3 replacement
+  ────────────────────────   ──────────────────────────────────────
+  fetch_source_docs          retrieve_source_docs (Qdrant search)
+  fetch_target_docs          retrieve_target_docs (Qdrant search)
+  validate_content           validate_retrieval (score thresholds)
+  [no expand node]           expand_search (MultiQueryRetriever)
+  [no cache check]           check_cache also checks Redis semantic cache
+  [no store step]            store_in_memory also writes to Redis cache
+  [no indexing]              Offline indexing pipeline (weekly)
+  InMemoryStore              PostgreSQL-backed LangGraph Store
+ 
+  ALL OTHER NODES UNCHANGED:
+    classify_feature, analyze_feature, reflect_on_analysis,
+    human_review, generate_guide, compile_output, handle_error
+ 
+  GRAPH STRUCTURE UNCHANGED except:
+    validate_content → validate_retrieval
+    [new] expand_search node added between validate and analyze
+ 
+FULL UPDATED GRAPH:
+ 
+  START
+    │
+    ▼
+  [check_cache] ──── CACHE HIT ──────────────────────► END
+  (checks Redis semantic cache AND long-term memory)
+    │ CACHE MISS
+    ▼
+  [classify_feature]
+    │
+    ├──────────────────────────────────┐
+    ▼                                  ▼
+  [retrieve_source_docs]     [retrieve_target_docs]
+  Qdrant hybrid search       Qdrant hybrid search
+  BM25 + Vector              BM25 + Vector
+  PARALLEL                   PARALLEL
+    │                                  │
+    └──────────────┬───────────────────┘
+                   │ Fan-In
+                   ▼
+          [validate_retrieval]
+          Score threshold: 0.70
+                   │
+        ┌──────────┴──────────┐
+        │ INSUFFICIENT         │ SUFFICIENT
+        ▼                      ▼
+   [expand_search]       [analyze_feature]     ← GPT-4o
+   MultiQueryRetriever         │
+   3 alt phrasings       [reflect_on_analysis] ← GPT-4o
+        │                      │
+        │ (if still insuff)    │
+        ▼                 [confidence_check]
+   [human_review]              │
+        │          ┌──────────┬┴───────────┐
+        │     conf≥0.8   0.5≤c<0.8    conf<0.5
+        │          │      retry loop   OR iter≥2
+        │          │      [expand_search]  │
+        │          ◄──────────────────────►│
+        │          │                  [human_review]
+        └─────────►▼                       │
+             [generate_guide]◄─────────────┘
+                   │
+             [compile_output]
+                   │
+             [store_in_memory]
+             (also writes to Redis)
+                   │
+                  END
+ 
+NEW COMPONENTS IN PHASE 3
+=======================================================================
+ 
+  Qdrant vector database      — stores and searches documentation chunks
+  text-embedding-3-small      — converts text to searchable vectors
+  EnsembleRetriever           — hybrid BM25 + vector search
+  ContextualCompressionRetriever — compresses chunks before LLM call
+  MultiQueryRetriever         — expand_search fallback
+  Redis SemanticCache         — deduplicates LLM calls across requests
+  Offline indexing pipeline   — crawls, splits, embeds, stores docs
+  PostgreSQL-backed Store     — upgrades in-memory store from Phase 2
+ 
+DELIVERY TIMELINE
+=======================================================================
+ 
+  Week 1-2:  Qdrant setup, indexing pipeline, embedding, metadata
+  Week 3:    Hybrid retrieval, contextual compression, score thresholds
+  Week 4:    Redis semantic cache, LangGraph Store to PostgreSQL
+  Week 5:    Swap fetch nodes for retrieval nodes in existing graph
+  Week 6:    End-to-end testing, incremental update scheduler
+ 
+UPGRADE TRIGGERS
+=======================================================================
+ 
+  - Cost per analysis is unacceptable at current query volume
+  - Same features queried repeatedly with no deduplication benefit
+  - HTTP fetch failures from documentation site rate limiting
+  - Scaling to bulk analysis of 100+ features per run
+  - Terminology mismatches causing wrong pages to be fetched
+ 
+=======================================================================
+COPILOT IMPLEMENTATION PROMPT — PHASE 3
+=======================================================================
+ 
+You are implementing Phase 3 of a GitLab → GitHub Migration Assistant.
+This upgrades the Phase 2 LangGraph workflow by replacing direct HTTP
+document fetching with a full RAG pipeline using Qdrant vector database,
+hybrid search, contextual compression, and Redis semantic caching.
+ 
+READ THIS ENTIRE PROMPT BEFORE WRITING ANY CODE.
+ 
+-----------------------------------------------------------------------
+WHAT PHASE 3 ADDS OVER PHASE 2
+-----------------------------------------------------------------------
+ 
+  NODES REPLACED:
+    fetch_source_docs    →  retrieve_source_docs (Qdrant hybrid search)
+    fetch_target_docs    →  retrieve_target_docs (Qdrant hybrid search)
+    validate_content     →  validate_retrieval (score threshold gate)
+ 
+  NODES ADDED:
+    expand_search        — MultiQueryRetriever fallback for poor retrieval
+ 
+  NODES UPDATED:
+    check_cache          — also checks Redis semantic cache
+    store_in_memory      — also writes to Redis semantic cache
+    analyze_feature      — reads RetrievedChunk instead of FetchedDocument
+ 
+  NEW INFRASTRUCTURE:
+    Qdrant               — vector database with two collections
+    text-embedding-3-small — embedding model
+    EnsembleRetriever    — BM25 (0.4) + VectorStore (0.6) hybrid search
+    ContextualCompressionRetriever — GPT-4o-mini compresses chunks
+    MultiQueryRetriever  — generates 3 alternate query phrasings
+    Redis                — semantic cache for LLM responses
+    Indexing pipeline    — crawl → split → embed → store (offline)
+ 
+  UNCHANGED FROM PHASE 2:
+    classify_feature chain, analyzer chain, reflector chain,
+    guide_generator chain, all other nodes and graph edges,
+    PostgreSQL checkpoints, FastAPI endpoints, LangSmith tracing
+ 
+-----------------------------------------------------------------------
+EXACT PROJECT STRUCTURE TO CREATE
+-----------------------------------------------------------------------
+ 
+migration_assistant/
+├── .env
+├── .env.example
+├── requirements.txt
+├── README.md
+├── pytest.ini
+├── docker-compose.yml
+├── main.py
+├── api.py
+├── config.py
+├── models/
+│   ├── __init__.py
+│   └── schemas.py
+├── chains/
+│   ├── __init__.py
+│   ├── classifier.py
+│   ├── analyzer.py
+│   ├── reflector.py
+│   └── guide_generator.py
+├── indexing/
+│   ├── __init__.py
+│   ├── loader.py
+│   ├── splitter.py
+│   ├── embedder.py
+│   └── pipeline.py
+├── retrieval/
+│   ├── __init__.py
+│   ├── retriever.py
+│   └── expander.py
+├── cache/
+│   ├── __init__.py
+│   └── semantic_cache.py
+├── graph/
+│   ├── __init__.py
+│   ├── state.py
+│   ├── nodes.py
+│   ├── edges.py
+│   └── builder.py
+├── memory/
+│   ├── __init__.py
+│   └── store.py
+└── tests/
+    ├── __init__.py
+    ├── test_indexing.py
+    ├── test_retrieval.py
+    ├── test_nodes.py
+    ├── test_edges.py
+    ├── test_graph.py
+    └── test_api.py
+ 
+-----------------------------------------------------------------------
+DEPENDENCIES — requirements.txt
+-----------------------------------------------------------------------
+ 
+langchain==0.3.25
+langchain-openai==0.3.16
+langchain-community==0.3.24
+langchain-qdrant==0.2.0
+langgraph==0.4.7
+langgraph-checkpoint-postgres==2.0.21
+langsmith==0.3.45
+pydantic==2.11.4
+pydantic-settings==2.9.1
+qdrant-client==1.14.2
+redis==5.2.1
+rank-bm25==0.2.2
+httpx==0.28.1
+beautifulsoup4==4.13.4
+python-dotenv==1.1.0
+fastapi==0.115.12
+uvicorn==0.34.2
+psycopg[binary,pool]==3.2.9
+pytest==8.3.5
+pytest-asyncio==0.26.0
+rich==14.0.0
+ 
+-----------------------------------------------------------------------
+FILE: docker-compose.yml
+-----------------------------------------------------------------------
+ 
+Write a Docker Compose file for local development with three services:
+ 
+qdrant:
+  image: qdrant/qdrant:latest
+  ports: "6333:6333" and "6334:6334"
+  volumes: ./qdrant_storage:/qdrant/storage
+ 
+redis:
+  image: redis:7-alpine
+  ports: "6379:6379"
+  command: redis-server --appendonly yes
+  volumes: ./redis_data:/data
+ 
+postgres:
+  image: postgres:16-alpine
+  environment:
+    POSTGRES_DB: migration_assistant
+    POSTGRES_USER: migration
+    POSTGRES_PASSWORD: migration
+  ports: "5432:5432"
+  volumes: ./postgres_data:/var/lib/postgresql/data
+ 
+-----------------------------------------------------------------------
+FILE: config.py
+-----------------------------------------------------------------------
+ 
+Extend Phase 2 config with these additional fields:
+  qdrant_host: str = "localhost"
+  qdrant_port: int = 6333
+  qdrant_collection_gitlab: str = "gitlab_docs"
+  qdrant_collection_github: str = "github_docs"
+  redis_url: str = "redis://localhost:6379"
+  embedding_model: str = "text-embedding-3-small"
+  embedding_batch_size: int = 100
+  retrieval_k: int = 3
+  retrieval_score_threshold: float = 0.70
+  bm25_weight: float = 0.4
+  vector_weight: float = 0.6
+  chunk_size: int = 800
+  chunk_overlap: int = 150
+  semantic_cache_ttl_seconds: int = 604800
+  retrieval_cache_ttl_seconds: int = 86400
+ 
+-----------------------------------------------------------------------
+FILE: models/schemas.py
+-----------------------------------------------------------------------
+ 
+Keep all Phase 2 schemas. Add these new schemas:
+ 
+1. RetrievedChunk
+   Fields:
+     text: str
+     score: float
+     url: str
+     platform: str
+     section_title: str | None
+     category: str | None
+     chunk_id: str
+     indexed_at: str | None
+ 
+2. RetrievalResult
+   Fields:
+     chunks: list[RetrievedChunk]
+     platform: str
+     query_used: str
+     retrieval_quality: Literal["sufficient", "insufficient"]
+     scores: list[float]
+ 
+3. IndexingResult
+   Fields:
+     platform: str
+     pages_crawled: int
+     chunks_created: int
+     chunks_embedded: int
+     chunks_updated: int
+     duration_seconds: float
+     indexed_at: datetime
+ 
+-----------------------------------------------------------------------
+FILE: graph/state.py
+-----------------------------------------------------------------------
+ 
+Update MigrationState from Phase 2.
+ 
+REPLACE these fields:
+  gitlab_docs: Annotated[list[dict], operator.add]
+    → gitlab_chunks: Annotated[list[dict], operator.add]
+ 
+  github_docs: Annotated[list[dict], operator.add]
+    → github_chunks: Annotated[list[dict], operator.add]
+ 
+  content_quality: str | None
+    → retrieval_quality: str | None
+ 
+ADD these new fields:
+  expand_attempted: bool
+  retrieval_queries_used: list[str]
+  cache_lookup_
