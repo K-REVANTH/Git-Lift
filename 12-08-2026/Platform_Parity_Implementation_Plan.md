@@ -302,3 +302,64 @@ flowchart TD
     K[Human approval required\nfor all three above]
 ```
 
+## 5. Knowledge Base Design
+
+### 5.1 File Structure
+
+```text
+capability_kb/
+├── capability_taxonomy.yaml      ← 54 canonical capability IDs — source of truth
+├── known_gaps.yaml               ← Curated per-path migration gap records
+├── discovery_mapping.yaml        ← NEW: CSV column → capability mapping config
+├── kb_update_proposals.yaml      ← NEW: Human review staging area
+├── kb_update_log.yaml            ← NEW: Full audit log of every auto-update
+└── platforms/
+    ├── gitlab.yaml               ← Per-capability support data
+    ├── github.yaml               ← Per-capability support data
+    ├── azure_devops.yaml         ← Per-capability support data
+    └── bitbucket.yaml            ← Per-capability support data
+```
+
+### 5.2 New File: discovery\_mapping.yaml
+
+This is the master translation table between discovery CSV columns and capability IDs.
+It is **configuration — not code**. Adding support for a new platform's CSV columns
+requires only a YAML change, not a code change.
+
+```yaml
+# discovery_mapping.yaml
+# Maps CSV columns from any SCM discovery report to canonical capability IDs.
+# This file grows automatically as new discovery CSVs are processed.
+
+repo.lfs:
+  columns:
+    - lfs_enabled
+    - total_lfs_files
+    - lfs_objects_size_bytes
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+review.draft_pr:
+  columns:
+    - mr_draft_count           # GitLab column name
+    - draft_pull_requests      # GitHub column name (added later)
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab, github]
+  last_updated: "2026-08-12"
+
+review.approval_rules:
+  columns:
+    - total_approval_rules
+    - approval_rules_names
+    - approval_rules_min_approvals
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+```
