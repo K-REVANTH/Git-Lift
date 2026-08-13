@@ -500,15 +500,14 @@ The gap classification logic is completely unchanged. Usage signals are attached
 after classification.
 
 Gap object before enhancement:
-
 ```json
 {
   "capability_id": "service_desk",
   "classification": "HARD_BLOCKER"
 }
-Gap object after enhancement:
 ```
 
+Gap object after enhancement:
 ```json
 {
   "capability_id": "service_desk",
@@ -670,3 +669,316 @@ New Files
 > ***It now flows automatically from `{{steps.platform_parity_parse_discovery.source_platform}}`.***
 
 ---
+
+## 9. Implementation Phases
+
+### Phase 1 — Discovery Mapping Configuration
+
+**Duration:** 1–2 days
+**Goal:** Move all CSV column → capability mapping out of code and into versioned config.
+**LLM involved:** No
+**Dependencies:** None
+
+| **Deliverable** | **Description** |
+| --- | --- |
+| **`capability_kb/discovery_mapping.yaml`** | Complete mapping for all 30+ GitLab discovery CSV columns |
+
+**Acceptance criteria:**
+
+- Every column from the discovery CSV column mapping is represented
+- Each entry includes: **`columns`**, **`detection_rule`**, **`confidence`**, **`value_type`**, **`platforms`**, **`last_updated`**
+- File is valid YAML and loads without error
+
+---
+
+### Phase 2 — Step 0: Parse Discovery
+
+**Duration:** 2–3 days
+**Goal:** Build the CSV parser — the foundation all other phases depend on.
+**LLM involved:** No
+**Dependencies:** Phase 1
+
+| **Deliverable** | **Description** |
+| --- | --- |
+| **`scripts/platform_parity_parse_discovery.py`** | Complete Step 0 script |
+| **`metadata/platform_parity_parse_discovery.txt`** | Script descriptor |
+
+**Acceptance criteria:**
+
+- Correctly detects GitLab from the real discovery CSV using score-based detection
+- Produces **`usage_signals`** for all mapped columns
+- Produces **`unmapped_columns`** list for any column not in **`discovery_mapping.yaml`**
+- All output is valid JSON-serializable
+- Raises **`RuntimeError`** (not **`sys.exit`**) on platform detection failure
+- Follows all script writing rules from the repository guide
+- Passes with **`--skip-bedrock`** mode in test runner
+
+---
+
+### Phase 3 — Step 0.5: KB Updater
+
+**Duration:** 2–3 days
+**Goal:** Build the self-evolution engine that grows the KB as new CSVs arrive.
+**LLM involved:** Yes (column classification only)
+**Dependencies:** Phase 2
+
+| **Deliverable** | **Description** |
+| --- | --- |
+| **`scripts/platform_parity_kb_updater.py`** | Step 0.5 script |
+| **`metadata/platform_parity_kb_updater.txt`** | Script descriptor |
+| **`capability_kb/kb_update_proposals.yaml`** | Initial empty file with schema comment |
+| **`capability_kb/kb_update_log.yaml`** | Initial empty file with schema comment |
+
+**Acceptance criteria:**
+
+- No-ops silently when **`unmapped_columns`** is empty
+- Calls LangChain + ChatBedrock only for non-empty **`unmapped_columns`**
+- HIGH confidence proposals auto-write to **`discovery_mapping.yaml`**
+- MEDIUM/LOW confidence proposals write to **`kb_update_proposals.yaml`** only
+- All proposals (any confidence) logged to **`kb_update_log.yaml`**
+- Never writes to **`capability_taxonomy.yaml`**, **`known_gaps.yaml`**, or **`platforms/*.yaml`**
+- Uses **`PydanticOutputParser`** to enforce structured Claude output
+- Follows all script writing rules
+
+---
+
+### Phase 4 — Modify Init Script
+
+**Duration:** 0.5 days
+**Goal:** Remove **`SOURCE_PLATFORM`** as a user input — it now comes from Step 0 automatically.
+**LLM involved:** No
+**Dependencies:** Phase 2
+
+**Change:**
+
+```python
+# Before
+source_platform = {{SOURCE_PLATFORM}}
+
+# After
+source_platform = {{steps.platform_parity_parse_discovery.source_platform}}
+```
+
+**Acceptance criteria:**
+
+- **`SOURCE_PLATFORM`** removed from workflow JSON values block
+- Script reads source platform from Step 0 output
+- All downstream **`{{steps.platform_parity_init.*}}`** references continue to work unchanged
+
+---
+
+### Phase 5 — Enhance Compare Script
+
+**Duration:** 1–2 days
+**Goal:** Attach usage signals to every gap object and apply usage-aware risk weighting.
+**LLM involved:** No
+**Dependencies:** Phase 2
+
+**Acceptance criteria:**
+
+- Every gap object in output includes: **`repo_count`**, **`repo_percentage`**, **`urgency`**, **`confidence`**, **`examples`**, **`evidence`**
+- Gap objects with no usage signal carry **`repo_count: 0`**, **`urgency: "LOW"`**
+- Risk calculation uses the usage-aware weighting table from Section 6.3
+- Deterministic gap classification logic is completely unchanged
+
+---
+
+### Phase 6 — Enhance Generate Report with LangChain
+
+**Duration:** 2–3 days
+**Goal:** Replace raw boto3 call with LangChain chain for structured, reliable report generation.
+**LLM involved:** Yes
+**Dependencies:** Phase 5
+
+**LangChain components:**
+
+| **Component** | **Import** | **Purpose** |
+| --- | --- | --- |
+| **`ChatBedrock`** | **`langchain_aws`** | Claude access via Bedrock |
+| **`PromptTemplate`** | **`langchain.prompts`** | Structured prompt construction |
+| **`PydanticOutputParser`** | **`langchain_core.output_parsers`** | Enforce 5-section output |
+| **`RunnableSequence`** | **`langchain_core.runnables`** | Chain composition |
+
+**Acceptance criteria:**
+
+- All 5 report sections present in every output
+- If Claude omits a section, LangChain retries up to **`maximum_attempts`**
+- SHA-256 cache logic preserved (7-day TTL)
+- **`--skip-bedrock`** mode bypasses LangChain call entirely — no AWS credentials needed
+- System instruction forbidding invented facts present in every prompt call
+- Every report section references repo counts and urgency where available
+
+---
+
+### Phase 7 — CLI Entry Point
+
+**Duration:** 1 day
+**Goal:** Provide a user-friendly local run interface that wraps the pipeline.
+**LLM involved:** No
+**Dependencies:** Phase 2
+
+**Expected interaction:**
+
+```text
+$ python platform_parity_run.py --csv discovery_report.csv
+
+Detecting source platform...
+
+  Platform   : GitLab
+  Confidence : HIGH
+  Evidence   : 243 gitlab.com URLs · 5 GitLab-specific columns
+
+Enter target platform (github / azure_devops / bitbucket): github
+
+Starting parity analysis for GitLab → GitHub (243 repositories)...
+Report written to: test_output/gitlab_to_github_a3f9c1.md
+```
+
+**Acceptance criteria:**
+
+- Accepts **`--csv`** path argument
+- Displays detection result with confidence and evidence before prompting for target
+- Prompts for target platform if not supplied via **`--target`** argument
+- Temporal workflow itself remains non-interactive
+
+---
+
+### Phase 8 — Workflow and Test Runner Update
+
+**Duration:** 1 day
+**Goal:** Wire everything together in the Temporal workflow definition and update the test runner.
+**Dependencies:** All previous phases
+
+| **Deliverable** | **Change** |
+| --- | --- |
+| **`workflow/platform_parity_workflow.json`** | Add Steps 0 and 0.5 |
+| **`test_bedrock_e2e.py`** | Add **`--csv`** optional argument; wire to parse_discovery before pipeline |
+
+**Acceptance criteria:**
+
+- **`--skip-bedrock`** test mode runs Steps 0, 1, 2, 3, 5 fully; skips Steps 0.5 and 4
+- Matrix runner **`run_parity_matrix.py`** continues to work without CSV input
+- New **`--csv`** argument in test runner is optional — existing behaviour unchanged when omitted
+
+---
+
+## 10. Technology Stack
+
+| **Component** | **Technology** | **Rationale** |
+| --- | --- | --- |
+| Orchestration | Temporal Workflow | Existing — not changed |
+| CSV Parsing | Python **`csv.DictReader`** | Stdlib only — no pandas needed for flat row iteration |
+| Platform Detection | Python deterministic scoring | Auditable, reproducible, no LLM inference |
+| KB Format | YAML | Human-readable, diff-friendly, PR-reviewable |
+| LLM Access | AWS Bedrock Claude 3 Sonnet | Enterprise-grade, no data egress beyond AWS boundary |
+| LLM Orchestration | LangChain (**`langchain-aws`**) | Structured prompting, output parsing, retry, future RAG path |
+| Output Enforcement | Pydantic **`BaseModel`** | 5-section structure validated on every response |
+| Caching | SHA-256 file cache | Deterministic, no external dependency |
+| Output Formats | Markdown + JSON | Markdown for stakeholders; JSON for pipeline integration |
+
+New Python Dependencies
+```text
+langchain>=0.2
+langchain-aws
+langchain-community
+langchain-core
+```
+
+***No FAISS. No Chroma. No vector store at this stage.***
+***The KB is 54 capabilities — retrieval adds complexity with no benefit at this scale.***
+***When the KB grows beyond \~200 capabilities, AWS Bedrock Knowledge Bases is the***
+***recommended RAG path — not a self-managed vector store.***
+
+---
+
+## 11. Risks and Mitigations
+
+| **Risk** | **Likelihood** | **Impact** | **Mitigation** |
+| --- | --- | --- | --- |
+| KB Updater auto-writes incorrect mapping | Low | High | HIGH confidence threshold only; every write logged; MEDIUM/LOW staged for human review |
+| Claude invents a gap not in KB | Medium | High | System instruction in every prompt explicitly forbids this; Pydantic parser rejects invalid output |
+| New CSV schema breaks parser | Medium | Medium | Unmapped columns flagged explicitly — never silently dropped; Step 0.5 classifies them |
+| LangChain retry budget exhausted | Low | Medium | Deterministic fallback template fills sections 2 and 3 regardless of LLM response |
+| Discovery CSV has no URL column | Low | Medium | Column fingerprint fallback in platform detection; RuntimeError if confidence below threshold |
+| Bedrock outage | Low | Medium | Report generation is the last step; structured JSON from compare step is always available |
+
+---
+
+## 12. Success Metrics
+
+| **Metric** | **Target** |
+| --- | --- |
+| Repo impact coverage | Every HARD_BLOCKER and BEHAVIORAL_DIFF carries a repo count and percentage |
+| Evidence traceability | Every number in every report traces to a specific CSV column and detection rule |
+| KB auto-update precision | Zero incorrect HIGH-confidence auto-writes (validated by audit of first 10 runs) |
+| False negative rate | Zero missed blockers for capabilities in KB with HIGH confidence |
+| Skip-bedrock CI mode | Passes in under 10 seconds with no AWS credentials |
+| Report generation time | Under 30 seconds end-to-end including LLM call |
+| LLM token cost per report | Under $0.10 per run |
+
+---
+
+## 13. Future Evolution Path
+
+```mermaid
+flowchart LR
+    subgraph P1["Phase 1 — Now"]
+        A1[YAML KB\n54 capabilities]
+        A2[CSV Evidence]
+        A3[Deterministic Engine]
+        A4[Bedrock Narrator\nvia LangChain]
+    end
+
+    subgraph P2["Phase 2 — KB Growth"]
+        B1[Structured KB\n200+ capabilities]
+        B2[Bedrock Knowledge Base\nManaged RAG]
+        B3[Deterministic Engine\nunchanged]
+        B4[Bedrock Narrator\nunchanged]
+    end
+
+    subgraph P3["Phase 3 — Migration Intelligence"]
+        C1[Discovery Data\nany SCM platform]
+        C2[Knowledge Retrieval\nBedrock KB]
+        C3[Deterministic Facts Engine]
+        C4[LLM Narrator\nunchanged]
+    end
+
+    P1 -->|"KB grows beyond ~200 capabilities"| P2
+    P2 -->|Multi-platform discovery CSVs| P3
+```
+
+**When to introduce RAG:** When the KB grows beyond approximately 200 capabilities across 6+ platforms, semantic retrieval becomes more efficient than loading all KB
+content into every prompt. At that point, AWS Bedrock Knowledge Bases (managed RAG) is the recommended path — not FAISS or Chroma — because it preserves the enterprise
+security boundary and removes the infrastructure burden of managing a vector store.
+
+--- 
+
+# 14. Appendix — Before and After
+
+### Report Quality Comparison
+
+| **Dimension** | **Current System** | **After This Plan** |
+| --- | --- | --- |
+| Gap classification | ✅ Correct | ✅ Correct (unchanged) |
+| Repository impact | ❌ Not shown | ✅ Count + percentage + urgency |
+| Evidence traceability | ❌ None | ✅ Full CSV column → evidence → count chain |
+| KB evolution | ❌ Manual only | ✅ Auto-grows from new CSVs with safety gating |
+| New CSV columns | ❌ Silently ignored | ✅ Flagged, classified, optionally auto-mapped |
+| Report structure enforcement | ⚠️ Post-hoc validation | ✅ PydanticOutputParser prevents malformed output |
+| Platform detection | ❌ Manual user input | ✅ Auto-detected from CSV with confidence scoring |
+
+### Architecture State Comparison
+
+| **Dimension** | **Current** | **Target** |
+| --- | --- | --- |
+| Steps in pipeline | 5 | 7 (Steps 0 and 0.5 added) |
+| LLM touchpoints | 1 (generate_report) | 2 (kb_updater + generate_report) |
+| LangChain | Not used | generate_report + kb_updater |
+| KB files | 6 | 9 (+discovery_mapping, +proposals, +log) |
+| New Python dependencies | — | langchain, langchain-aws, langchain-community, langchain-core |
+| CSV awareness | None | Full evidence extraction and usage aggregation |
+| Skip-bedrock support | ✅ Preserved | ✅ Preserved |
+
+---
+
+*End of Implementation Plan — Platform Parity Module v2.0*
