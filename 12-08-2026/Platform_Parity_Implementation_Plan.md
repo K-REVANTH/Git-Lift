@@ -363,3 +363,24 @@ review.approval_rules:
   platforms: [gitlab]
   last_updated: "2026-08-12"
 ```
+
+### 5.3 Usage Signal Schema
+
+Every capability in the pipeline output carries this structure after Step 0 runs:
+```json
+{
+  "review.draft_pr": {
+    "repo_count": 131,
+    "percentage": 53.9,
+    "urgency": "HIGH",
+    "confidence": "HIGH",
+    "total_value": 847,
+    "examples": ["repo-alpha", "repo-beta", "repo-gamma"],
+    "evidence": {
+      "columns": ["mr_draft_count"],
+      "detection_rule": "value > 0",
+      "value_type": "numeric"
+    }
+  }
+}
+```
