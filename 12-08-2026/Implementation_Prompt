@@ -1,0 +1,1534 @@
+=======================================================================
+IMPLEMENTATION PROMPT — PLATFORM PARITY MODULE v2.0
+DISCOVERY-ENRICHED PARITY ENGINE WITH SELF-EVOLVING KB
+=======================================================================
+
+READ THIS ENTIRE PROMPT BEFORE WRITING A SINGLE LINE OF CODE.
+DO NOT SKIP AHEAD. DO NOT SUMMARIZE. IMPLEMENT EXACTLY AS SPECIFIED.
+
+=======================================================================
+SECTION 0 — WHAT YOU ARE AND WHAT YOU ARE DOING
+=======================================================================
+
+You are implementing Phase 2.0 of the Platform Parity Module inside
+the pace-scm-migration-scripts repository.
+
+Working folder: platform_parity/
+DO NOT touch any sibling folders: ghec_to_ghec/, perforce_to_github/
+
+You are enhancing an existing 5-step Temporal workflow pipeline that
+compares two SCM platforms and generates a migration parity report.
+
+The existing pipeline is COMPLETE and WORKING. You are ADDING to it,
+not replacing it.
+
+=======================================================================
+SECTION 1 — NON-NEGOTIABLE SCRIPT WRITING RULES
+=======================================================================
+
+Every .py file you write inside scripts/ MUST follow these rules.
+No exceptions.
+
+RULE 1 — Placeholders are BARE:
+  CORRECT:   VAR = {{VAR}}
+  INCORRECT: VAR = "{{VAR}}"
+  The renderer calls repr() on the value. Quoting it breaks rendering.
+
+RULE 2 — ONE stdout print only:
+  The LAST statement in every script must be:
+    print(json.dumps({...}))
+  ALL other output goes to sys.stderr only.
+  Use: print("debug info", file=sys.stderr)
+
+RULE 3 — No host-app imports:
+  Scripts run as standalone subprocesses.
+  You CANNOT import scm_migration_tool.*
+
+RULE 4 — No shell=True in subprocess:
+  Always use list form:
+    subprocess.run(["cmd", "arg"], check=True)
+
+RULE 5 — No .. in paths. No hardcoded secrets.
+
+RULE 6 — Raise exceptions on error:
+  NEVER use sys.exit(1).
+  ALWAYS use raise RuntimeError("descriptive message")
+
+RULE 7 — Use ApiRequestBuilder for HTTP calls:
+  from activities.script_executor.http_client import ApiRequestBuilder
+
+RULE 8 — Use db_session for DB:
+  from activities.commons.db.db_session import db_session
+
+RULE 9 — One script, one responsibility (~150 lines of logic max).
+
+RULE 10 — All shared inputs declared ONCE in init.py (the first script).
+  Downstream scripts read via {{steps.init.<key>}}
+  Never re-declare shared inputs in downstream scripts.
+
+RULE 11 — {{EXECUTION_ID}} is auto-injected. Never pass it in values.
+
+RULE 12 — Source vars prefixed SOURCE_, target vars prefixed TARGET_.
+
+RULE 13 — Placeholder chaining:
+  {{previous.KEY}}               from immediately prior script
+  {{steps.SCRIPT_NAME.KEY}}      from a specific named script
+
+=======================================================================
+SECTION 2 — EXISTING PIPELINE (DO NOT MODIFY UNLESS INSTRUCTED)
+=======================================================================
+
+The existing 5-step pipeline is:
+
+  Step 1: platform_parity_init.py
+  Step 2: platform_parity_load_kb.py
+  Step 3: platform_parity_compare.py
+  Step 4: platform_parity_generate_report.py
+  Step 5: platform_parity_export.py
+
+The existing KB files are:
+  capability_kb/capability_taxonomy.yaml   (54 capability IDs)
+  capability_kb/known_gaps.yaml            (curated gap records)
+  capability_kb/platforms/gitlab.yaml
+  capability_kb/platforms/github.yaml
+  capability_kb/platforms/azure_devops.yaml
+  capability_kb/platforms/bitbucket.yaml
+
+DO NOT modify load_kb.py or export.py at all.
+DO NOT modify capability_taxonomy.yaml or known_gaps.yaml or
+  any platforms/*.yaml file — these grow only via human approval.
+
+=======================================================================
+SECTION 3 — GOVERNING ARCHITECTURAL PRINCIPLE
+=======================================================================
+
+This principle must be enforced in every line of code you write:
+
+  DETERMINISTIC ENGINE  →  DECIDES all migration facts
+  KB UPDATER            →  EXPANDS knowledge over time
+  CLAUDE via LANGCHAIN  →  EXPLAINS facts as narrative only
+
+  Claude never creates a blocker.
+  Claude never removes a blocker.
+  Claude never changes a risk level.
+  Claude never writes directly to any KB file.
+  Every number in the report must trace back to a CSV column.
+
+If any code you write violates this principle, delete it and rewrite it.
+
+=======================================================================
+SECTION 4 — NEW PYTHON DEPENDENCIES
+=======================================================================
+
+Add these to requirements.txt if not already present:
+
+  langchain>=0.2
+  langchain-aws
+  langchain-community
+  langchain-core
+
+DO NOT add:
+  faiss-cpu
+  chromadb
+  pandas
+  langchain agents
+  langchain tools
+  langchain memory
+
+The KB is 54 capabilities. Vector search is not needed and must not
+be introduced. If you find yourself reaching for FAISS or Chroma,
+stop and reconsider.
+
+=======================================================================
+SECTION 5 — DELIVERY ORDER (MANDATORY — DO NOT SKIP AHEAD)
+=======================================================================
+
+Implement in this exact order. Complete each task fully before
+starting the next. After each task, verify the file is syntactically
+valid with: python -m py_compile <file>
+
+  TASK 1  — Create capability_kb/discovery_mapping.yaml
+  TASK 2  — Create scripts/platform_parity_parse_discovery.py
+  TASK 3  — Create metadata/platform_parity_parse_discovery.txt
+  TASK 4  — Create scripts/platform_parity_kb_updater.py
+  TASK 5  — Create metadata/platform_parity_kb_updater.txt
+  TASK 6  — Create capability_kb/kb_update_proposals.yaml (empty scaffold)
+  TASK 7  — Create capability_kb/kb_update_log.yaml (empty scaffold)
+  TASK 8  — Modify scripts/platform_parity_init.py
+  TASK 9  — Modify scripts/platform_parity_compare.py
+  TASK 10 — Modify scripts/platform_parity_generate_report.py
+  TASK 11 — Update workflow/platform_parity_workflow.json
+  TASK 12 — Create platform_parity_run.py
+  TASK 13 — Modify test_bedrock_e2e.py
+
+=======================================================================
+TASK 1 — CREATE capability_kb/discovery_mapping.yaml
+=======================================================================
+
+File: capability_kb/discovery_mapping.yaml
+
+PURPOSE:
+This is the master translation table between discovery CSV columns and
+canonical capability IDs from capability_taxonomy.yaml.
+
+This is CONFIGURATION, not code. Adding a new platform's CSV support
+requires only a YAML change here — zero code changes.
+
+This file grows automatically when platform_parity_kb_updater.py
+processes new CSVs with unmapped columns (HIGH confidence only).
+
+SCHEMA per capability entry:
+  <capability_id>:
+    columns:
+      - <csv_column_name_1>
+      - <csv_column_name_2>       # multiple columns for same capability
+    detection_rule: any_positive | boolean_true | all_positive
+    confidence: HIGH | MEDIUM | LOW
+    value_type: numeric | boolean | string
+    platforms: [gitlab, github, azure_devops, bitbucket]
+    last_updated: "YYYY-MM-DD"
+
+DETECTION RULE MEANINGS:
+  any_positive   — repo uses capability if ANY listed column has value > 0
+  boolean_true   — repo uses capability if ANY listed column is true/True/1
+  all_positive   — repo uses capability only if ALL listed columns have value > 0
+
+WRITE ALL OF THESE ENTRIES. Do not omit any.
+
+# ── REPOSITORY CAPABILITIES ──────────────────────────────────────────
+
+repo.lfs:
+  columns:
+    - lfs_enabled
+    - total_lfs_files
+    - lfs_objects_size_bytes
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.wikis:
+  columns:
+    - total_wikis
+    - wiki_size_bytes
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.protected_branches:
+  columns:
+    - total_protected_branches
+    - total_protected_branches_with_force_push
+    - total_protected_branches_with_code_owner_approval
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.branch_rules:
+  columns:
+    - protected_branch_names
+  detection_rule: any_positive
+  confidence: MEDIUM
+  value_type: string
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.packages:
+  columns:
+    - total_packages
+    - packages_size_bytes
+    - packages_enabled
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.container_registry:
+  columns:
+    - total_registry_repositories
+    - container_registry_size_bytes
+    - container_registry_enabled
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.releases:
+  columns:
+    - total_releases
+    - total_tags
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.signed_commits:
+  columns:
+    - web_based_commit_signing
+  detection_rule: boolean_true
+  confidence: MEDIUM
+  value_type: boolean
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.submodule_support:
+  columns:
+    - total_submodules
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+repo.visibility_control:
+  columns:
+    - visibility
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: string
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── CODE REVIEW CAPABILITIES ─────────────────────────────────────────
+
+review.approval_rules:
+  columns:
+    - total_approval_rules
+    - approval_rules_names
+    - approval_rules_min_approvals
+    - remove_source_branch_after_merge
+    - only_merge_if_pipeline_succeeds
+    - only_merge_if_all_discussions_resolved
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+review.required_reviewers:
+  columns:
+    - approval_rules_code_owner_required
+  detection_rule: boolean_true
+  confidence: HIGH
+  value_type: boolean
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+review.draft_pr:
+  columns:
+    - mr_draft_count
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+review.merge_strategies:
+  columns:
+    - merge_method
+    - squash_option
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: string
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+review.code_owners:
+  columns:
+    - approval_rules_code_owner_required
+  detection_rule: boolean_true
+  confidence: HIGH
+  value_type: boolean
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── LABELS ───────────────────────────────────────────────────────────
+
+labels.color:
+  columns:
+    - total_labels
+  detection_rule: any_positive
+  confidence: MEDIUM
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── SNIPPETS ─────────────────────────────────────────────────────────
+
+snippets.project_scope:
+  columns:
+    - snippets_enabled
+    - snippets_size_bytes
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+snippets.multi_file:
+  columns:
+    - snippets_size_bytes
+  detection_rule: any_positive
+  confidence: LOW
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── CICD CAPABILITIES ────────────────────────────────────────────────
+
+cicd.pipelines:
+  columns:
+    - total_pipelines
+    - total_pipeline_jobs
+    - ci_config_path
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+cicd.runners:
+  columns:
+    - shared_runners_enabled
+    - build_timeout
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+cicd.environments:
+  columns:
+    - total_environments
+    - total_deployments
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+cicd.schedules:
+  columns:
+    - total_pipeline_schedules
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+cicd.protected_variables:
+  columns:
+    - total_ci_variables
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── PROJECT MANAGEMENT ───────────────────────────────────────────────
+
+pm.milestones:
+  columns:
+    - total_milestones
+    - milestones_active_count
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+pm.confidential_issues:
+  columns:
+    - issues_confidential_count
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── SECURITY ─────────────────────────────────────────────────────────
+
+security.compliance_frameworks:
+  columns:
+    - compliance_frameworks
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: string
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── INTEGRATIONS ─────────────────────────────────────────────────────
+
+integrations.webhooks:
+  columns:
+    - total_webhooks
+    - total_project_integrations
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+# ── ACCESS CONTROL ───────────────────────────────────────────────────
+
+access.deploy_keys:
+  columns:
+    - total_deploy_keys
+    - deploy_keys_read_only_count
+    - deploy_keys_read_write_count
+  detection_rule: any_positive
+  confidence: HIGH
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+access.team_hierarchy:
+  columns:
+    - member_count
+    - owners_count
+    - maintainers_count
+    - developers_count
+  detection_rule: any_positive
+  confidence: MEDIUM
+  value_type: numeric
+  platforms: [gitlab]
+  last_updated: "2026-08-12"
+
+AFTER writing this file, verify it loads cleanly:
+  python -c "import yaml; yaml.safe_load(open('capability_kb/discovery_mapping.yaml'))"
+
+=======================================================================
+TASK 2 — CREATE scripts/platform_parity_parse_discovery.py
+=======================================================================
+
+File: scripts/platform_parity_parse_discovery.py
+
+PURPOSE:
+Step 0 of the pipeline. Reads the discovery CSV, detects the source
+platform, loads discovery_mapping.yaml, extracts per-capability usage
+evidence, and produces structured usage_signals for downstream steps.
+
+PLACEHOLDERS (bare — no quotes):
+  CSV_PATH      = {{CSV_PATH}}
+  EXECUTION_ID  = {{EXECUTION_ID}}
+
+NO LLM. NO LANGCHAIN. NO PANDAS. Stdlib only.
+Imports allowed: csv, json, sys, os, pathlib, re, yaml, datetime, collections
+
+─── PLATFORM DETECTION ALGORITHM ────────────────────────────────────
+
+Use a score-based model. Never guess. Never use LLM.
+
+Scoring rules:
+  URL fingerprint (check http_url or ssh_url column if present):
+    "gitlab" in URL value    → +100 per row (sum, then cap signal at +100)
+    "github" in URL value    → score github_url +100 (separate counter)
+    "dev.azure" or "visualstudio" in URL → score ado_url +100
+    "bitbucket" in URL       → score bitbucket_url +100
+
+  Column fingerprint (check header row for column presence):
+    GitLab-specific columns present (each):
+      auto_devops_enabled, namespace_kind, service_desk_enabled,
+      mr_draft_count, squash_option, snippets_access,
+      merge_requests_access
+      → +20 per column found
+
+    GitHub-specific columns present (each):
+      workflow_runs, check_runs, actions_enabled
+      → subtract 20 from gitlab score per column found
+
+    Azure DevOps-specific columns present (each):
+      build_definition_id, tfvc_path
+      → subtract 20 from gitlab score per column found
+
+    Bitbucket-specific columns present (each):
+      pipeline_uuid, clone_ssh_url
+      → subtract 20 from gitlab score per column found
+
+Platform selection:
+  Take the platform with the highest total score.
+  If gitlab_score >= 100  → confidence = HIGH
+  If gitlab_score >= 60   → confidence = MEDIUM
+  If gitlab_score < 60    → raise RuntimeError with message:
+    f"Unable to confidently detect source platform. "
+    f"Highest score: {max_score} for {detected_platform}. "
+    f"Columns found: {csv_columns[:20]}"
+
+Output evidence dict:
+  {
+    "url_matches": <int — number of rows where URL matched winning platform>,
+    "platform_columns_found": <list of matching column names>,
+    "score": <int>
+  }
+
+─── CSV VALIDATION ───────────────────────────────────────────────────
+
+Before processing rows:
+  1. Verify CSV_PATH exists → raise RuntimeError if not
+  2. Verify file is readable → raise RuntimeError if not
+  3. Verify at least one data row exists (beyond header)
+     → raise RuntimeError("CSV file is empty or has no data rows")
+  4. Verify at least one column from discovery_mapping.yaml
+     is present in the header → raise RuntimeError if none found
+     (this prevents processing completely wrong file types)
+
+─── EVIDENCE EXTRACTION AND USAGE AGGREGATION ────────────────────────
+
+Load discovery_mapping.yaml from:
+  KB_BASE_PATH + "/discovery_mapping.yaml"
+  where KB_BASE_PATH is derived from CSV_PATH's parent directory
+  climbing up to find capability_kb/ OR use a relative path from
+  the script's own location.
+
+  Specifically: resolve KB path as:
+    Path(__file__).parent.parent / "capability_kb" / "discovery_mapping.yaml"
+
+For each capability_id in discovery_mapping.yaml:
+
+  Initialize accumulators:
+    repo_count = 0
+    total_value = 0
+    examples = []    # first 3 repo names where capability detected
+
+  For each row in CSV:
+    Apply detection_rule across all listed columns:
+
+    If detection_rule == "any_positive":
+      detected = any(float(row[col]) > 0
+                     for col in columns if col in row
+                     and row[col] not in ("", None, "None", "nan"))
+
+    If detection_rule == "boolean_true":
+      detected = any(str(row[col]).strip().lower() in ("true", "1", "yes")
+                     for col in columns if col in row)
+
+    If detection_rule == "all_positive":
+      detected = all(float(row[col]) > 0
+                     for col in columns if col in row
+                     and row[col] not in ("", None, "None", "nan"))
+      and len([c for c in columns if c in row]) > 0
+
+    If detected:
+      repo_count += 1
+      total_value += sum of numeric values for all present columns
+      if len(examples) < 3:
+        repo_name = row.get("name") or row.get("path") or row.get("http_url", "unknown")
+        examples.append(repo_name)
+
+  Calculate:
+    percentage = round((repo_count / total_repos) * 100, 2)
+
+    urgency:
+      if percentage > 50:  "HIGH"
+      elif percentage > 10: "MEDIUM"
+      else:                "LOW"
+
+  Build usage_signal entry:
+    {
+      "repo_count": repo_count,
+      "percentage": percentage,
+      "urgency": urgency,
+      "confidence": mapping_entry["confidence"],
+      "total_value": total_value,
+      "examples": examples,
+      "evidence": {
+        "columns": mapping_entry["columns"],
+        "detection_rule": mapping_entry["detection_rule"],
+        "value_type": mapping_entry["value_type"]
+      }
+    }
+
+─── UNMAPPED COLUMNS ─────────────────────────────────────────────────
+
+After processing all mapped capabilities:
+
+Collect all_mapped_columns = flat list of all column names that appear
+in any entry's "columns" list in discovery_mapping.yaml.
+
+unmapped_columns = [
+  col for col in csv_columns
+  if col not in all_mapped_columns
+  and col not in SKIP_COLUMNS
+]
+
+SKIP_COLUMNS (these are metadata, not feature signals — never flag them):
+  "id", "name", "path", "http_url", "ssh_url", "description",
+  "created_at", "updated_at", "last_activity_at", "namespace_id",
+  "namespace_name", "namespace_path", "namespace_kind",
+  "default_branch", "web_url", "avatar_url", "forks_count",
+  "star_count", "open_issues_count", "size", "repository_size"
+
+─── COLUMN STATS ─────────────────────────────────────────────────────
+
+For each CSV column (mapped or unmapped):
+  column_stats[col] = {
+    "non_zero_count": <int>,
+    "total_value": <numeric sum or 0 for non-numeric>,
+    "sample_values": <first 3 non-zero/non-empty values>
+  }
+
+─── OUTPUT (must be the ONLY print statement) ────────────────────────
+
+print(json.dumps({
+  "source_platform": source_platform,
+  "platform_confidence": platform_confidence,
+  "platform_evidence": platform_evidence,
+  "total_repos": total_repos,
+  "usage_signals": usage_signals,
+  "unmapped_columns": unmapped_columns,
+  "column_stats": column_stats,
+  "csv_columns": csv_columns
+}))
+
+─── ERROR HANDLING ───────────────────────────────────────────────────
+
+ALL errors must raise RuntimeError with a descriptive message.
+NEVER use sys.exit().
+NEVER use bare except — always except specific exception types
+or except Exception as e and re-raise as RuntimeError.
+
+Wrap numeric conversions in try/except to handle non-numeric values
+gracefully — treat them as 0.
+
+=======================================================================
+TASK 3 — CREATE metadata/platform_parity_parse_discovery.txt
+=======================================================================
+
+File: metadata/platform_parity_parse_discovery.txt
+
+Write a plain-text description of the script in this format
+(match the style of the existing metadata files):
+
+  Script: platform_parity_parse_discovery
+  Step: 0 (pre-pipeline)
+  Purpose: <one sentence>
+  Inputs: CSV_PATH, EXECUTION_ID
+  Outputs: source_platform, platform_confidence, platform_evidence,
+           total_repos, usage_signals, unmapped_columns,
+           column_stats, csv_columns
+  LLM: No
+  LangChain: No
+  Dependencies: stdlib only (csv, json, yaml, pathlib, re)
+  Notes: <2-3 sentences about the score-based platform detection
+          and the evidence chain from CSV column to usage signal>
+
+=======================================================================
+TASK 4 — CREATE scripts/platform_parity_kb_updater.py
+=======================================================================
+
+File: scripts/platform_parity_kb_updater.py
+
+PURPOSE:
+Step 0.5 of the pipeline. Receives unmapped_columns from parse_discovery.
+If the list is empty, this script is a no-op. If non-empty, it asks
+Claude (via LangChain) to classify each unknown column against the
+existing capability taxonomy. HIGH confidence proposals are
+auto-written to discovery_mapping.yaml. MEDIUM/LOW proposals are
+staged in kb_update_proposals.yaml for human review. All proposals
+are logged to kb_update_log.yaml.
+
+PLACEHOLDERS (bare — no quotes):
+  KB_BASE_PATH          = {{steps.platform_parity_init.kb_base_path}}
+  AUTO_UPDATE_THRESHOLD = {{AUTO_UPDATE_THRESHOLD}}
+  EXECUTION_ID          = {{EXECUTION_ID}}
+
+Input from previous step (use {{previous.KEY}}):
+  unmapped_columns  — list of unknown column names
+  source_platform   — detected platform string
+  column_stats      — raw column stats (used to provide Claude with samples)
+
+─── EARLY EXIT ───────────────────────────────────────────────────────
+
+Read unmapped_columns from {{previous.unmapped_columns}}
+
+If unmapped_columns is empty or null:
+  print(json.dumps({
+    "kb_update_performed": False,
+    "proposals": [],
+    "auto_written": [],
+    "staged_for_review": [],
+    "execution_id": EXECUTION_ID
+  }))
+  Exit immediately (do not call LangChain).
+
+─── LANGCHAIN SETUP ──────────────────────────────────────────────────
+
+from langchain_aws import ChatBedrock
+from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+from typing import List
+
+class KBUpdateProposal(BaseModel):
+    column_name: str = Field(description="The CSV column name being classified")
+    maps_to_capability: str = Field(
+        description="Existing capability ID from taxonomy, or 'NEW' if none fits"
+    )
+    proposed_capability_id: str = Field(
+        description="Only populated if maps_to_capability is 'NEW'. "
+                    "Follow format: category.feature_name"
+    )
+    detection_rule: str = Field(
+        description="One of: any_positive, boolean_true, all_positive"
+    )
+    value_type: str = Field(
+        description="One of: numeric, boolean, string"
+    )
+    confidence: str = Field(
+        description="One of: HIGH, MEDIUM, LOW"
+    )
+    reasoning: str = Field(
+        description="One sentence explaining the classification decision"
+    )
+
+class KBUpdateResponse(BaseModel):
+    proposals: List[KBUpdateProposal]
+
+─── PROMPT TEMPLATE ──────────────────────────────────────────────────
+
+Build the prompt using PromptTemplate. The template must include:
+
+SYSTEM INSTRUCTION (hardcoded in template):
+  "You are a SCM platform capability classifier. Your job is to map
+  unknown CSV column names to canonical SCM capability IDs.
+  You must only use the capability IDs from the provided taxonomy.
+  If no existing capability fits, propose a new one following the
+  naming convention: category.feature_name.
+  You must never invent capability behavior or migration facts.
+  Your confidence must reflect certainty — HIGH means you are
+  certain, MEDIUM means plausible but not verified, LOW means
+  speculative."
+
+TEMPLATE VARIABLES:
+  {taxonomy_ids}      — comma-separated list of all 54 capability IDs
+  {source_platform}   — detected source platform
+  {columns_block}     — formatted block of unknown columns with samples
+
+Build columns_block as:
+  For each unmapped column:
+    Column: {col_name}
+    Sample values (up to 5): {sample_values from column_stats}
+
+─── CHAIN EXECUTION ──────────────────────────────────────────────────
+
+parser = PydanticOutputParser(pydantic_object=KBUpdateResponse)
+
+llm = ChatBedrock(
+    model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+    region_name=<aws_region from environment variable AWS_DEFAULT_REGION>,
+    model_kwargs={"max_tokens": 2048, "temperature": 0}
+)
+
+chain = prompt | llm | parser
+
+response = chain.invoke({
+    "taxonomy_ids": taxonomy_ids_str,
+    "source_platform": source_platform,
+    "columns_block": columns_block
+})
+
+─── WRITE LOGIC ──────────────────────────────────────────────────────
+
+Load current discovery_mapping.yaml.
+Load current kb_update_proposals.yaml (may be empty — handle gracefully).
+
+For each proposal in response.proposals:
+
+  log_entry = {
+    "timestamp": datetime.utcnow().isoformat(),
+    "execution_id": EXECUTION_ID,
+    "column_name": proposal.column_name,
+    "maps_to_capability": proposal.maps_to_capability,
+    "proposed_capability_id": proposal.proposed_capability_id,
+    "detection_rule": proposal.detection_rule,
+    "confidence": proposal.confidence,
+    "reasoning": proposal.reasoning,
+    "action_taken": None   # set below
+  }
+
+  If proposal.confidence == "HIGH" and AUTO_UPDATE_THRESHOLD == "HIGH":
+    capability_id = proposal.maps_to_capability
+    if capability_id == "NEW":
+      capability_id = proposal.proposed_capability_id
+
+    new_entry = {
+      "columns": [proposal.column_name],
+      "detection_rule": proposal.detection_rule,
+      "confidence": proposal.confidence,
+      "value_type": proposal.value_type,
+      "platforms": [source_platform],
+      "last_updated": date.today().isoformat(),
+      "auto_added": True,
+      "added_by": "kb_updater",
+      "reasoning": proposal.reasoning
+    }
+
+    If capability_id already in discovery_mapping:
+      Append proposal.column_name to existing entry's columns list
+      (avoid duplicates)
+    Else:
+      Add new_entry under capability_id key
+
+    Write updated discovery_mapping.yaml back to disk.
+    auto_written.append(proposal.column_name)
+    log_entry["action_taken"] = "auto_written_to_discovery_mapping"
+
+  Else (MEDIUM or LOW confidence):
+    Append proposal dict to kb_update_proposals.yaml
+    Write kb_update_proposals.yaml back to disk.
+    staged_for_review.append(proposal.column_name)
+    log_entry["action_taken"] = "staged_for_human_review"
+
+  Append log_entry to kb_update_log.yaml
+  Write kb_update_log.yaml back to disk.
+
+─── KB WRITE SAFETY ENFORCEMENT ─────────────────────────────────────
+
+This script MUST NEVER write to:
+  capability_taxonomy.yaml
+  known_gaps.yaml
+  platforms/gitlab.yaml
+  platforms/github.yaml
+  platforms/azure_devops.yaml
+  platforms/bitbucket.yaml
+
+If any code path would write to these files, raise RuntimeError.
+
+─── OUTPUT ───────────────────────────────────────────────────────────
+
+print(json.dumps({
+  "kb_update_performed": True,
+  "proposals": [p.dict() for p in response.proposals],
+  "auto_written": auto_written,
+  "staged_for_review": staged_for_review,
+  "execution_id": EXECUTION_ID
+}))
+
+=======================================================================
+TASK 5 — CREATE metadata/platform_parity_kb_updater.txt
+=======================================================================
+
+File: metadata/platform_parity_kb_updater.txt
+
+Same format as Task 3. Include:
+  Script, Step, Purpose, Inputs, Outputs, LLM, LangChain,
+  Dependencies, Notes
+
+Notes must mention:
+  - No-op behaviour when unmapped_columns is empty
+  - KB write safety rules (which files can and cannot be written)
+  - Confidence gating (HIGH → auto-write, MEDIUM/LOW → staging)
+
+=======================================================================
+TASK 6 — CREATE capability_kb/kb_update_proposals.yaml
+=======================================================================
+
+File: capability_kb/kb_update_proposals.yaml
+
+Create this file with this exact content:
+
+# KB Update Proposals
+# ===================
+# This file contains capability mapping proposals generated by
+# platform_parity_kb_updater.py that did not meet the HIGH confidence
+# threshold for automatic acceptance.
+#
+# HUMAN REVIEW REQUIRED before any entry here is promoted to
+# discovery_mapping.yaml, capability_taxonomy.yaml, or any
+# platforms/*.yaml file.
+#
+# Schema per proposal:
+#   column_name: str
+#   maps_to_capability: str   (existing capability ID or "NEW")
+#   proposed_capability_id: str  (only if maps_to == "NEW")
+#   detection_rule: str
+#   value_type: str
+#   confidence: str
+#   reasoning: str
+#   execution_id: str
+#   timestamp: str
+#
+proposals: []
+
+=======================================================================
+TASK 7 — CREATE capability_kb/kb_update_log.yaml
+=======================================================================
+
+File: capability_kb/kb_update_log.yaml
+
+Create this file with this exact content:
+
+# KB Update Log
+# =============
+# Append-only audit log of every classification proposal made by
+# platform_parity_kb_updater.py, regardless of confidence level
+# or action taken.
+#
+# This file must never be truncated or modified manually.
+# It is the authoritative record of all KB evolution events.
+#
+# Schema per entry:
+#   timestamp: ISO-8601 UTC
+#   execution_id: str
+#   column_name: str
+#   maps_to_capability: str
+#   proposed_capability_id: str
+#   detection_rule: str
+#   confidence: str
+#   reasoning: str
+#   action_taken: "auto_written_to_discovery_mapping" | "staged_for_human_review"
+#
+entries: []
+
+=======================================================================
+TASK 8 — MODIFY scripts/platform_parity_init.py
+=======================================================================
+
+File: scripts/platform_parity_init.py (EXISTING — modify only)
+
+CHANGE 1: Remove SOURCE_PLATFORM placeholder.
+
+Find this line (or equivalent):
+  source_platform = {{SOURCE_PLATFORM}}
+
+Replace with:
+  source_platform = {{steps.platform_parity_parse_discovery.source_platform}}
+
+CHANGE 2: The output dict must still include source_platform as a key
+so all downstream {{steps.platform_parity_init.source_platform}}
+references continue to work unchanged.
+
+DO NOT change any other logic in this file.
+DO NOT change any other placeholder.
+DO NOT change the output keys.
+
+=======================================================================
+TASK 9 — MODIFY scripts/platform_parity_compare.py
+=======================================================================
+
+File: scripts/platform_parity_compare.py (EXISTING — modify only)
+
+─── CHANGE 1: READ USAGE SIGNALS ─────────────────────────────────────
+
+At the top of the script, after reading existing inputs, add:
+
+  usage_signals_raw = {{steps.platform_parity_parse_discovery.usage_signals}}
+
+  # usage_signals may be None if pipeline ran without CSV (backwards compat)
+  usage_signals = usage_signals_raw if usage_signals_raw else {}
+
+─── CHANGE 2: ATTACH USAGE DATA TO EVERY GAP OBJECT ─────────────────
+
+The existing code produces gap objects (dicts) for hard_blockers,
+behavioral_diffs, partial_support, and seamless lists.
+
+After building each gap object, call this helper function to enrich it:
+
+  def _attach_usage(gap: dict, capability_id: str, usage_signals: dict) -> dict:
+      signal = usage_signals.get(capability_id, {})
+      gap["repo_count"] = signal.get("repo_count", 0)
+      gap["repo_percentage"] = signal.get("percentage", 0.0)
+      gap["urgency"] = signal.get("urgency", "LOW")
+      gap["confidence"] = signal.get("confidence", "UNKNOWN")
+      gap["examples"] = signal.get("examples", [])
+      gap["evidence"] = signal.get("evidence", {})
+      return gap
+
+Apply _attach_usage() to EVERY gap object before appending it to
+any of the four output lists.
+
+─── CHANGE 3: USAGE-AWARE RISK WEIGHTING ────────────────────────────
+
+REPLACE the existing risk calculation block with this logic:
+
+  def _calculate_risk(hard_blockers, behavioral_diffs,
+                      partial_support) -> str:
+
+    # Check for CRITICAL: any hard blocker with HIGH urgency
+    critical_blockers = [
+      b for b in hard_blockers
+      if b.get("urgency") == "HIGH"
+    ]
+    if critical_blockers:
+      return "CRITICAL"
+
+    # Hard blockers exist but lower urgency
+    if hard_blockers:
+      return "HIGH"
+
+    # Behavioral diffs with HIGH urgency
+    high_urgency_diffs = [
+      d for d in behavioral_diffs
+      if d.get("urgency") == "HIGH"
+    ]
+    if high_urgency_diffs:
+      return "HIGH"
+
+    # More than 3 behavioral diffs OR any partial support
+    if len(behavioral_diffs) > 3 or partial_support:
+      return "MEDIUM"
+
+    if behavioral_diffs:
+      return "MEDIUM"
+
+    return "LOW"
+
+─── DO NOT CHANGE ────────────────────────────────────────────────────
+
+Do NOT modify the gap classification rules (priority order 1-5).
+Do NOT modify the behavioral attribute comparison logic.
+Do NOT modify the output key names.
+The output structure must remain identical — only gap objects get
+new fields added.
+
+=======================================================================
+TASK 10 — MODIFY scripts/platform_parity_generate_report.py
+=======================================================================
+
+File: scripts/platform_parity_generate_report.py (EXISTING — modify only)
+
+PURPOSE OF CHANGE:
+Replace the raw boto3 Bedrock call with a LangChain chain using
+ChatBedrock + PromptTemplate + PydanticOutputParser.
+Preserve ALL existing logic: cache check, SHA-256 hash, 7-day TTL,
+NO_CACHE flag, skip-bedrock mode.
+
+─── NEW IMPORTS ──────────────────────────────────────────────────────
+
+Add these imports (keep all existing imports):
+
+  from langchain_aws import ChatBedrock
+  from langchain.prompts import PromptTemplate
+  from langchain_core.output_parsers import PydanticOutputParser
+  from langchain_core.runnables import RunnableSequence
+  from pydantic import BaseModel, Field
+
+─── PYDANTIC MODEL ───────────────────────────────────────────────────
+
+Add this class:
+
+  class ParityReportSections(BaseModel):
+      executive_summary: str = Field(
+          description="Section 1: Executive Summary"
+      )
+      hard_blockers_section: str = Field(
+          description="Section 2: Hard Blockers with repo counts"
+      )
+      behavioral_differences_section: str = Field(
+          description="Section 3: Behavioral Differences with repo counts"
+      )
+      seamless_section: str = Field(
+          description="Section 4: Seamless Migrations"
+      )
+      coverage_section: str = Field(
+          description="Section 5: Coverage Report"
+      )
+
+─── READ USAGE SIGNALS ───────────────────────────────────────────────
+
+Add after existing input reads:
+
+  usage_signals = {{steps.platform_parity_parse_discovery.usage_signals}}
+  total_repos = {{steps.platform_parity_parse_discovery.total_repos}}
+  if usage_signals is None:
+    usage_signals = {}
+  if total_repos is None:
+    total_repos = 0
+
+─── BUILD USAGE CONTEXT BLOCK ────────────────────────────────────────
+
+Add this function:
+
+  def _build_usage_context(usage_signals: dict, total_repos: int) -> str:
+      if not usage_signals or total_repos == 0:
+          return "No repository usage data available for this analysis."
+
+      lines = [
+          f"=== USAGE SIGNALS FROM DISCOVERY REPORT ({total_repos} repositories) ===",
+          "",
+          "The following data shows actual feature usage across repositories.",
+          "You MUST reference these numbers when writing about each capability.",
+          "",
+      ]
+      for cap_id, signal in sorted(
+          usage_signals.items(),
+          key=lambda x: x[1].get("percentage", 0),
+          reverse=True
+      ):
+          lines.append(
+              f"{cap_id:<40} "
+              f"{signal['repo_count']:>4}/{total_repos} repos "
+              f"({signal['percentage']:>5.1f}%) "
+              f"— Urgency: {signal['urgency']}"
+          )
+      lines.append("")
+      lines.append("=== END USAGE SIGNALS ===")
+      return "\n".join(lines)
+
+─── REPLACE THE BEDROCK CALL ─────────────────────────────────────────
+
+Find the section where boto3 is used to call Bedrock.
+Replace it with this LangChain chain.
+
+Keep everything BEFORE the boto3 call unchanged:
+  - SHA-256 hash calculation
+  - Cache file path construction
+  - Cache hit check (return early if hit and not NO_CACHE)
+
+Replace ONLY the actual API call section:
+
+  # Build usage context
+  usage_context = _build_usage_context(usage_signals, total_repos)
+
+  # System instruction — injected into every prompt
+  SYSTEM_INSTRUCTION = """You are a SCM migration analyst writing a
+  professional parity report for a migration team.
+
+  RULES YOU MUST FOLLOW WITHOUT EXCEPTION:
+  1. The supplied migration facts are authoritative. Do not alter them.
+  2. Do not invent any capability gaps not present in the input.
+  3. Do not remove any capability gaps from the input.
+  4. Do not change any classification (HARD_BLOCKER, BEHAVIORAL_DIFF, etc).
+  5. Do not suggest workarounds not listed in the input data.
+  6. Do not change risk levels.
+  7. For every capability you write about, reference the repository
+     count and urgency from the USAGE SIGNALS section if available.
+  8. Prioritize HIGH urgency items prominently in the executive summary.
+  9. Your job is explanation and narrative only — not decision-making."""
+
+  # Build prompt template
+  template = PromptTemplate.from_template(
+      SYSTEM_INSTRUCTION + "\n\n"
+      "{usage_context}\n\n"
+      "=== MIGRATION FACTS (authoritative — do not alter) ===\n"
+      "{gap_payload}\n"
+      "=== END MIGRATION FACTS ===\n\n"
+      "Write the parity report with exactly these 5 sections:\n"
+      "## 1. Executive Summary\n"
+      "## 2. 🔴 Hard Blockers\n"
+      "## 3. 🟡 Behavioral Differences\n"
+      "## 4. 🟢 Seamless Migrations\n"
+      "## 5. 📋 Coverage Report\n\n"
+      "{format_instructions}"
+  )
+
+  parser = PydanticOutputParser(pydantic_object=ParityReportSections)
+
+  llm = ChatBedrock(
+      model_id=bedrock_model_id,
+      region_name=aws_region,
+      model_kwargs={"max_tokens": 4096, "temperature": 0}
+  )
+
+  chain = template | llm | parser
+
+  result = chain.invoke({
+      "usage_context": usage_context,
+      "gap_payload": json.dumps(gap_analysis, indent=2),
+      "format_instructions": parser.get_format_instructions()
+  })
+
+  # Reconstruct full markdown from parsed sections
+  report_markdown = "\n\n".join([
+      f"## 1. Executive Summary\n{result.executive_summary}",
+      f"## 2. 🔴 Hard Blockers\n{result.hard_blockers_section}",
+      f"## 3. 🟡 Behavioral Differences\n{result.behavioral_differences_section}",
+      f"## 4. 🟢 Seamless Migrations\n{result.seamless_section}",
+      f"## 5. 📋 Coverage Report\n{result.coverage_section}",
+  ])
+
+─── PRESERVE SKIP-BEDROCK PATH ───────────────────────────────────────
+
+The existing skip-bedrock / deterministic template path must be
+preserved exactly as-is. The LangChain chain is called ONLY when
+Bedrock mode is active (not skipped).
+
+─── PRESERVE CACHE WRITE ─────────────────────────────────────────────
+
+After building report_markdown (whether from LangChain or cache):
+  Write to cache file (existing logic — keep unchanged)
+
+─── OUTPUT ───────────────────────────────────────────────────────────
+
+Keep the existing output dict structure unchanged.
+Do not add or remove output keys.
+
+=======================================================================
+TASK 11 — UPDATE workflow/platform_parity_workflow.json
+=======================================================================
+
+File: workflow/platform_parity_workflow.json
+
+Replace the entire file content with:
+
+{
+  "name": "platform_parity_check",
+  "steps": [
+    {
+      "name": "platform_parity_parse_discovery",
+      "values": {
+        "CSV_PATH": ""
+      }
+    },
+    {
+      "name": "platform_parity_kb_updater",
+      "values": {
+        "KB_BASE_PATH": "",
+        "AUTO_UPDATE_THRESHOLD": "HIGH"
+      }
+    },
+    {
+      "name": "platform_parity_init",
+      "values": {
+        "TARGET_PLATFORM": "",
+        "OUTPUT_FORMAT": "markdown",
+        "SCOPE_FILTER": "[]",
+        "AWS_REGION": "",
+        "BEDROCK_MODEL_ID": "anthropic.claude-3-sonnet-20240229-v1:0",
+        "KB_BASE_PATH": "",
+        "NO_CACHE": false,
+        "PROJECT_ID": ""
+      }
+    },
+    {
+      "name": "platform_parity_load_kb"
+    },
+    {
+      "name": "platform_parity_compare"
+    },
+    {
+      "name": "platform_parity_generate_report",
+      "activity_options": {
+        "start_to_close_seconds": 120,
+        "heartbeat_seconds": 30,
+        "retry_policy": {
+          "maximum_attempts": 2,
+          "non_retryable_error_types": ["ScriptNotFoundError"]
+        }
+      }
+    },
+    {
+      "name": "platform_parity_export"
+    }
+  ]
+}
+
+NOTE: SOURCE_PLATFORM is intentionally absent from platform_parity_init
+values. It is now provided automatically by platform_parity_parse_discovery
+via {{steps.platform_parity_parse_discovery.source_platform}}.
+
+=======================================================================
+TASK 12 — CREATE platform_parity_run.py
+=======================================================================
+
+File: platform_parity_run.py (in platform_parity/ root — NOT in scripts/)
+
+PURPOSE:
+Local CLI entry point for running the pipeline interactively.
+This is NOT a Temporal workflow script. It is a developer/user tool.
+It does NOT follow the script writing rules (no bare placeholders,
+no single print restriction — those rules apply only to scripts/).
+
+This file uses argparse, subprocess, and Python stdlib only.
+It does NOT import any workflow engine.
+
+─── INTERFACE ────────────────────────────────────────────────────────
+
+Usage:
+  python platform_parity_run.py --csv <path> [--target <platform>]
+                                 [--skip-bedrock] [--output-dir <dir>]
+
+Arguments:
+  --csv          Path to discovery report CSV (required)
+  --target       Target platform: github | azure_devops | bitbucket
+                 (if omitted, user is prompted interactively)
+  --skip-bedrock Skip Bedrock/LangChain calls (deterministic mode)
+  --output-dir   Output directory for reports (default: test_output/)
+
+─── BEHAVIOUR ────────────────────────────────────────────────────────
+
+1. Validate --csv path exists. Exit with clear error if not.
+
+2. Run platform detection inline (DO NOT import parse_discovery.py —
+   duplicate the detection logic here or call the script as subprocess):
+
+   Run scripts/platform_parity_parse_discovery.py as subprocess:
+     subprocess.run(
+       ["python", "scripts/platform_parity_parse_discovery.py"],
+       env={**os.environ, "CSV_PATH": csv_path, "EXECUTION_ID": "cli-detection"},
+       capture_output=True, text=True
+     )
+   Parse the JSON stdout result.
+
+3. Display detection results:
+   print(f"\n  Detecting source platform from: {csv_path}")
+   print(f"\n  Platform   : {result['source_platform'].upper()}")
+   print(f"  Confidence : {result['platform_confidence']}")
+   print(f"  Repos      : {result['total_repos']}")
+   print(f"  Evidence   : {evidence_summary}")
+
+4. If --target not supplied, prompt:
+   target = input("\nEnter target platform (github / azure_devops / bitbucket): ").strip()
+   Validate against allowed values. Re-prompt if invalid.
+
+5. Confirm and run:
+   print(f"\nStarting parity analysis: {source} → {target}")
+   print(f"Repositories: {total_repos}")
+   print("─" * 60)
+
+   (In a real deployment, this would invoke the Temporal workflow.
+    For local testing, print instructions for running test_bedrock_e2e.py
+    with the appropriate arguments.)
+
+   print(f"\nTo run locally:")
+   print(f"  python test_bedrock_e2e.py \\")
+   print(f"    --source {source_platform} \\")
+   print(f"    --target {target_platform} \\")
+   print(f"    --csv {csv_path} \\")
+   if skip_bedrock:
+     print(f"    --skip-bedrock \\")
+   print(f"    --output-dir {output_dir}")
+
+=======================================================================
+TASK 13 — MODIFY test_bedrock_e2e.py
+=======================================================================
+
+File: test_bedrock_e2e.py (EXISTING — modify only)
+
+─── CHANGE 1: ADD --csv ARGUMENT ────────────────────────────────────
+
+In the argparse setup, add:
+
+  parser.add_argument(
+      "--csv",
+      type=str,
+      default=None,
+      help="Path to discovery report CSV. If provided, runs "
+           "parse_discovery before the pipeline to extract usage signals."
+  )
+
+─── CHANGE 2: WIRE CSV TO PARSE_DISCOVERY ────────────────────────────
+
+After argument parsing, before the pipeline runs:
+
+  usage_signals = {}
+  total_repos = 0
+  source_platform = args.source   # preserve existing --source argument
+
+  if args.csv:
+      print(f"[INFO] Processing discovery CSV: {args.csv}", file=sys.stderr)
+
+      # Run parse_discovery inline (import the module or call as function)
+      # Preferred: import and call the core logic as a function
+      # If the script structure doesn't support import, run as subprocess
+      # and parse stdout JSON.
+
+      # Parse result and extract:
+      usage_signals = parse_result.get("usage_signals", {})
+      total_repos = parse_result.get("total_repos", 0)
+      detected_platform = parse_result.get("source_platform")
+
+      if detected_platform and not args.source:
+          source_platform = detected_platform
+          print(f"[INFO] Auto-detected source platform: {source_platform}",
+                file=sys.stderr)
+      elif detected_platform and args.source != detected_platform:
+          print(
+              f"[WARN] --source {args.source} overrides detected "
+              f"platform {detected_platform}",
+              file=sys.stderr
+          )
+
+─── CHANGE 3: PASS USAGE SIGNALS INTO PIPELINE STAGES ───────────────
+
+When calling the compare stage (or its equivalent in the test runner):
+  Pass usage_signals and total_repos so gap objects get enriched.
+
+When calling the report stage:
+  Pass usage_signals and total_repos so the prompt is enriched.
+
+─── CHANGE 4: PRESERVE --skip-bedrock ───────────────────────────────
+
+When --skip-bedrock is set:
+  - parse_discovery still runs (if --csv provided) — it has no LLM
+  - kb_updater is SKIPPED entirely
+  - generate_report uses deterministic template (existing behaviour)
+  - No AWS credentials required
+
+─── DO NOT CHANGE ────────────────────────────────────────────────────
+
+Do not change the existing --source, --target, --skip-bedrock,
+--output-dir, --pairs arguments or their behaviour.
+Do not change the matrix runner (run_parity_matrix.py).
+All existing tests must still pass when --csv is not provided.
+
+=======================================================================
+SECTION 6 — VALIDATION CHECKLIST
+=======================================================================
+
+After completing all 13 tasks, verify each item:
+
+□ python -m py_compile scripts/platform_parity_parse_discovery.py
+□ python -m py_compile scripts/platform_parity_kb_updater.py
+□ python -m py_compile scripts/platform_parity_init.py
+□ python -m py_compile scripts/platform_parity_compare.py
+□ python -m py_compile scripts/platform_parity_generate_report.py
+□ python -m py_compile platform_parity_run.py
+
+□ python -c "import yaml; yaml.safe_load(open('capability_kb/discovery_mapping.yaml'))"
+□ python -c "import yaml; yaml.safe_load(open('capability_kb/kb_update_proposals.yaml'))"
+□ python -c "import yaml; yaml.safe_load(open('capability_kb/kb_update_log.yaml'))"
+□ python -c "import json; json.load(open('workflow/platform_parity_workflow.json'))"
+
+□ No script in scripts/ uses sys.exit()
+□ No script in scripts/ has more than one print() statement
+□ No script in scripts/ has quoted placeholders: "{{...}}"
+□ No script in scripts/ imports scm_migration_tool.*
+□ kb_updater.py has no write path to capability_taxonomy.yaml
+□ kb_updater.py has no write path to known_gaps.yaml
+□ kb_updater.py has no write path to platforms/*.yaml
+□ generate_report.py LangChain path is only reached when not skip-bedrock
+□ generate_report.py cache logic is intact (SHA-256, 7-day TTL, NO_CACHE)
+□ compare.py gap classification rules (priority 1-5) are unchanged
+□ test_bedrock_e2e.py --skip-bedrock mode requires no AWS credentials
+
+=======================================================================
+SECTION 7 — WHAT SUCCESS LOOKS LIKE
+=======================================================================
+
+When the implementation is complete, this command must work:
+
+  python test_bedrock_e2e.py \
+    --source gitlab \
+    --target github \
+    --csv discovery_report_July_23_2026_at_3-05_PM.csv \
+    --skip-bedrock
+
+And produce a parity report where:
+  - Every HARD_BLOCKER entry shows repo_count and repo_percentage
+  - Service Desk appears with ~219 repos / 90% / Urgency HIGH
+  - Draft MRs appear with ~131 repos / 53.9% / Urgency HIGH
+  - Wikis appear with ~158 repos / 65% / Urgency HIGH
+  - Each gap's evidence block names the source CSV column
+
+And this command must also work (with AWS credentials):
+
+  python test_bedrock_e2e.py \
+    --source gitlab \
+    --target github \
+    --csv discovery_report_July_23_2026_at_3-05_PM.csv
+
+And produce the same structured data with a Claude-generated narrative
+that references all repo counts and urgency levels.
+
+=======================================================================
+END OF IMPLEMENTATION PROMPT
+=======================================================================
