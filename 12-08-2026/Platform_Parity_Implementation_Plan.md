@@ -402,3 +402,271 @@ The `evidence` block is the audit trail. Every number in the final report is tra
 ## 6. Component Specifications
 
 ### 6.1 Step 0 — platform\_parity\_parse\_discovery.py
+
+| **Property** | **Detail** |
+| --- | --- |
+| Type | New script |
+| LLM involved | No |
+| LangChain involved | No |
+| Dependencies | **`csv`**, **`json`**, **`yaml`**, **`pathlib`**, **`sys`**, **`re`** — stdlib only |
+| Input placeholders | **`CSV_PATH`**, **`EXECUTION_ID`** |
+
+Platform detection uses a score-based model — not string matching alone:
+```text
+GitLab URL found in http_url / ssh_url     → +100 points
+GitLab-specific column found               → +20 points each
+GitHub-specific column found               → -20 points each
+Azure DevOps-specific column found         → -20 points each
+
+Score ≥ 100  → HIGH confidence
+Score 60–99  → MEDIUM confidence
+Score < 60   → RuntimeError (ambiguous — do not guess)
+```
+
+Urgency thresholds:
+```text
+repo_percentage > 50%  →  HIGH
+repo_percentage > 10%  →  MEDIUM
+repo_percentage ≤ 10%  →  LOW
+```
+
+Output keys:
+
+| **Key** | **Type** | **Description** |
+| --- | --- | --- |
+| **`source_platform`** | string | Detected platform: **`gitlab`** / **`github`** / **`azure_devops`** / **`bitbucket`** |
+| **`platform_confidence`** | string | **`HIGH`** / **`MEDIUM`** / **`LOW`** |
+| **`platform_evidence`** | object | **`url_matches`** count, platform-specific columns found |
+| **`total_repos`** | int | Row count from CSV |
+| **`usage_signals`** | object | capability_id → enriched signal object |
+| **`unmapped_columns`** | list | Column names not found in **`discovery_mapping.yaml`** |
+| **`column_stats`** | object | Raw per-column aggregate stats |
+| **`csv_columns`** | list | All column names found in the CSV |
+
+
+### 6.2 Step 0.5 — platform\_parity\_kb\_updater.py
+| **Property** | **Detail** |
+| --- | --- |
+| Type | New script |
+| LLM involved | Yes — column classification only |
+| LangChain involved | Yes — PromptTemplate + ChatBedrock + PydanticOutputParser |
+| Triggers | Only when **`unmapped_columns`** is non-empty |
+| Input placeholders | **`KB_BASE_PATH`**, **`AUTO_UPDATE_THRESHOLD`**, **`EXECUTION_ID`** |
+
+LangChain components used:
+```python
+from langchain_aws import ChatBedrock
+from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+
+class KBUpdateProposal(BaseModel):
+    column_name: str
+    maps_to_capability: str      # existing ID or "NEW"
+    proposed_capability_id: str  # only if maps_to == "NEW"
+    detection_rule: str          # e.g. "value > 0" / "boolean_true"
+    confidence: str              # HIGH / MEDIUM / LOW
+    reasoning: str               # Claude's explanation for audit log
+```
+
+**What Claude is asked here — and nothing more:**
+
+```text
+Given:
+  - Unknown CSV column name: "workflow_runs"
+  - Sample values from 10 repos: [0, 0, 5, 12, 0, 3, 0, 8, 0, 1]
+  - Source platform detected: github
+  - Full capability taxonomy: [54 capability IDs provided]
+
+Answer:
+  1. Which existing capability does this column most likely measure?
+  2. What is the correct detection rule?
+  3. How confident are you? (HIGH / MEDIUM / LOW)
+  4. If no existing capability fits, propose a new capability ID.
+  5. Explain your reasoning in one sentence.
+```
+
+Write behaviour by confidence level:
+| **Confidence** | **Action** |
+| --- | --- |
+| HIGH | Auto-write to **`discovery_mapping.yaml`** + log to **`kb_update_log.yaml`** |
+| MEDIUM | Write to **`kb_update_proposals.yaml`** only + log |
+| LOW | Write to **`kb_update_proposals.yaml`** only + log |
+| Any | Always log to **`kb_update_log.yaml`** |
+
+
+### 6.3 Step 3 — platform_parity_compare.py (Enhanced)
+
+The gap classification logic is completely unchanged. Usage signals are attached
+after classification.
+
+Gap object before enhancement:
+
+```json
+{
+  "capability_id": "service_desk",
+  "classification": "HARD_BLOCKER"
+}
+Gap object after enhancement:
+```
+
+```json
+{
+  "capability_id": "service_desk",
+  "classification": "HARD_BLOCKER",
+  "repo_count": 219,
+  "repo_percentage": 90.1,
+  "urgency": "HIGH",
+  "confidence": "HIGH",
+  "examples": ["repo-1", "repo-2", "repo-3"],
+  "evidence": {
+    "columns": ["service_desk_enabled"],
+    "detection_rule": "boolean_true",
+    "value_type": "boolean"
+  }
+}
+```
+
+Usage-aware risk weighting:
+| **Condition** | **Risk Level** |
+| --- | --- |
+| Hard blocker + usage ≥ 50% | CRITICAL |
+| Hard blocker + usage 10–49% | HIGH |
+| Hard blocker + usage < 10% | HIGH (serious, lower priority) |
+| Behavioral diff + usage ≥ 50% | HIGH |
+| Behavioral diff + usage < 50% | MEDIUM |
+| Partial support only | MEDIUM |
+| All seamless | LOW |
+
+
+### 6.4 Step 4 — platform\_parity\_generate_report.py (LangChain)
+
+LangChain chain structure:
+
+```python
+from langchain_aws import ChatBedrock
+from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.runnables import RunnableSequence
+
+chain = PromptTemplate(...) | ChatBedrock(...) | PydanticOutputParser(...)
+```
+
+System instruction injected into every prompt:
+```text
+The supplied facts are authoritative.
+Do not invent capabilities.
+Do not alter classifications.
+Do not introduce workarounds not present in the input.
+Do not change risk levels.
+Your responsibility is explanation only.
+Reference repository counts and urgency in every section you write.
+```
+
+Pydantic model enforcing 5-section structure:
+```python
+class ParityReport(BaseModel):
+    executive_summary: str
+    hard_blockers_section: str
+    behavioral_differences_section: str
+    seamless_section: str
+    coverage_section: str
+```
+
+If Claude omits any section, the PydanticOutputParser raises and LangChain retries automatically up to the configured maximum attempts.
+
+Skip-bedrock mode is fully preserved. When --skip-bedrock is set, the LangChain call is bypassed entirely and deterministic templates fill the report sections.
+No AWS credentials required.
+
+---
+
+## 7. Complete File Change Register
+
+New Files
+
+| **File** | **Purpose** |
+| --- | --- |
+| **`capability_kb/discovery_mapping.yaml`** | CSV column → capability mapping config |
+| **`capability_kb/kb_update_proposals.yaml`** | Human review staging area for MEDIUM/LOW proposals |
+| **`capability_kb/kb_update_log.yaml`** | Full audit log of every auto-update |
+| **`scripts/platform_parity_parse_discovery.py`** | Step 0 — CSV parser and usage aggregator |
+| **`scripts/platform_parity_kb_updater.py`** | Step 0.5 — KB self-evolution engine |
+| **`metadata/platform_parity_parse_discovery.txt`** | Script descriptor |
+| **`metadata/platform_parity_kb_updater.txt`** | Script descriptor |
+| **`platform_parity_run.py`** | CLI entry point for local runs |
+
+### Modified Files
+
+| **File** | **Change** |
+| --- | --- |
+| **`scripts/platform_parity_init.py`** | **`SOURCE_PLATFORM`** now reads from Step 0 — no longer a user input |
+| **`scripts/platform_parity_compare.py`** | Attaches usage signals to gap objects; usage-aware risk weighting |
+| **`scripts/platform_parity_generate_report.py`** | Raw boto3 replaced with LangChain PromptTemplate + ChatBedrock + PydanticOutputParser |
+| **`workflow/platform_parity_workflow.json`** | Steps 0 and 0.5 added before existing steps |
+| **`test_bedrock_e2e.py`** | Optional **`--csv`** argument; wires to parse_discovery before pipeline |
+
+### Unchanged Files
+
+| **File** | **Reason Unchanged** |
+| --- | --- |
+| **`scripts/platform_parity_load_kb.py`** | Loads updated KB — no logic change needed |
+| **`scripts/platform_parity_export.py`** | Fully compatible with enriched gap objects |
+| **`capability_kb/capability_taxonomy.yaml`** | Grows only via human approval |
+| **`capability_kb/known_gaps.yaml`** | Grows only via human approval |
+| **`capability_kb/platforms/*.yaml`** | Updated only via human approval |
+
+---
+
+## 8. Updated Workflow Definition
+
+```json
+{
+  "name": "platform_parity_check",
+  "steps": [
+    {
+      "name": "platform_parity_parse_discovery",
+      "values": {
+        "CSV_PATH": ""
+      }
+    },
+    {
+      "name": "platform_parity_kb_updater",
+      "values": {
+        "KB_BASE_PATH": "",
+        "AUTO_UPDATE_THRESHOLD": "HIGH"
+      }
+    },
+    {
+      "name": "platform_parity_init",
+      "values": {
+        "TARGET_PLATFORM": "",
+        "OUTPUT_FORMAT": "markdown",
+        "SCOPE_FILTER": "[]",
+        "AWS_REGION": "",
+        "BEDROCK_MODEL_ID": "anthropic.claude-3-sonnet-20240229-v1:0",
+        "KB_BASE_PATH": "",
+        "NO_CACHE": false,
+        "PROJECT_ID": ""
+      }
+    },
+    { "name": "platform_parity_load_kb" },
+    { "name": "platform_parity_compare" },
+    {
+      "name": "platform_parity_generate_report",
+      "activity_options": {
+        "start_to_close_seconds": 120,
+        "heartbeat_seconds": 30,
+        "retry_policy": {
+          "maximum_attempts": 2,
+          "non_retryable_error_types": ["ScriptNotFoundError"]
+        }
+      }
+    },
+    { "name": "platform_parity_export" }
+  ]
+}
+```
+
+> ***Key change: `SOURCE_PLATFORM` is removed from `platform_parity_init` values.***
+> ***It now flows automatically from `{{steps.platform_parity_parse_discovery.source_platform}}`.***
+
+---
