@@ -384,3 +384,21 @@ Every capability in the pipeline output carries this structure after Step 0 runs
   }
 }
 ```
+The `evidence` block is the audit trail. Every number in the final report is traceable back to a specific column and detection rule.
+
+### 5.4 KB Write Safety Rules
+
+| **File** | **Auto-write Allowed** | **Condition** |
+| --- | --- | --- |
+| **`discovery_mapping.yaml`** | ✅ Yes | Confidence HIGH only |
+| **`kb_update_log.yaml`** | ✅ Yes | Always — audit trail |
+| **`kb_update_proposals.yaml`** | ✅ Yes | Staging only — not live KB |
+| **`capability_taxonomy.yaml`** | ❌ Never | Human approval required |
+| **`known_gaps.yaml`** | ❌ Never | Human approval required |
+| **`platforms/*.yaml`** | ❌ Never | Human approval required |
+
+---
+
+## 6. Component Specifications
+
+### 6.1 Step 0 — platform\_parity\_parse\_discovery.py
