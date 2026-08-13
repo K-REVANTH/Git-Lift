@@ -45,19 +45,22 @@ Plan replacement before go-live.
 
 Before any diagram or code, one rule governs every design decision in this system:
 
+
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                                                                 │
-│ DETERMINISTIC ENGINE → DECIDES all migration facts             │
-│ KB UPDATER → EXPANDS knowledge over time                       │
-│ CLAUDE via LANGCHAIN → EXPLAINS facts as narrative             │
+│ DETERMINISTIC ENGINE → DECIDES all migration facts              │
+│ KB UPDATER → EXPANDS knowledge over time                        │
+│ CLAUDE via LANGCHAIN → EXPLAINS facts as narrative              │
 │                                                                 │
-│ Claude never creates a blocker.                                │
-│ Claude never removes a blocker.                                │
-│ Claude never changes a risk level.                             │
-│ Claude never writes directly to any KB file.                   │
-│ Every number in the report traces back to a CSV column.        │
+│ Claude never creates a blocker.                                 │
+│ Claude never removes a blocker.                                 │
+│ Claude never changes a risk level.                              │
+│ Claude never writes directly to any KB file.                    │
+│ Every number in the report traces back to a CSV column.         │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
+```
 
 This separation is non-negotiable. It is what makes the system auditable, reproducible,
 and safe for enterprise migration decisions.
@@ -66,30 +69,31 @@ and safe for enterprise migration decisions.
 
 ## 3. Three-Layer Architecture
 
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │ PARITY CHECK SYSTEM v2.0                                            │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│ Layer 1 — EVIDENCE (Discovery CSV + Knowledge Base)                │
+│ Layer 1 — EVIDENCE (Discovery CSV + Knowledge Base)                 │
 │ ────────────────────────────────────────────────                    │
 │ Real repository usage data extracted from discovery CSV.            │
 │ Curated, versioned, human-reviewable capability declarations.       │
 │ No inference. No hallucination. Ground truth only.                  │
 │                                                                     │
-│ Layer 2 — LOGIC (Deterministic Comparison Engine)                  │
+│ Layer 2 — LOGIC (Deterministic Comparison Engine)                   │
 │ ─────────────────────────────────────────────────                   │
 │ Structural diff of KB data enriched with usage signals.             │
 │ Same inputs always produce identical gap analysis.                  │
 │ Auditable, unit-testable. No LLM involved at this layer.            │
 │                                                                     │
-│ Layer 3 — NARRATIVE (LangChain + AWS Bedrock Claude)               │
+│ Layer 3 — NARRATIVE (LangChain + AWS Bedrock Claude)                │
 │ ────────────────────────────────────────────────────                │
 │ LLM receives pre-computed structured facts and generates            │
-│ human-readable narrative. LLM explains facts. Never decides them.  │
+│ human-readable narrative. LLM explains facts. Never decides them.   │
 │ LangChain enforces structured output via PydanticOutputParser.      │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
-
+```
 ---
 
 ## 4. Full System Architecture
