@@ -1,12 +1,11 @@
-
-# PACE SCM Migration â€” Platform Parity Module
+# PACE SCM Migration — Platform Parity Module
 ## Discovery-Enriched Parity Engine with Live KB Evolution
 ### Implementation Plan v3.0
 
 **Version:** 3.0
 **Date:** 2026-08-12
 **Status:** Pre-Implementation Planning
-**Scope:** Platform Parity Module â€” Universal Input, DB-Backed KB,
+**Scope:** Platform Parity Module — Universal Input, DB-Backed KB,
 Live API Documentation Sync, Self-Evolving Knowledge Base
 **Author:** Platform Migration Engineering Team
 
@@ -19,7 +18,7 @@ Live API Documentation Sync, Self-Evolving Knowledge Base
 The platform parity system compares two SCM platforms using a static
 Knowledge Base and produces reports identifying migration gaps:
 
-> *"Service Desk: HARD\_BLOCKER â€” GitLab supports it, GitHub does not."*
+> *"Service Desk: HARD\_BLOCKER — GitLab supports it, GitHub does not."*
 
 This is technically correct but operationally insufficient. It fails
 to answer the questions that actually drive migration planning:
@@ -38,19 +37,19 @@ to answer the questions that actually drive migration planning:
 Three specific requirements have been added that fundamentally change
 the architecture:
 
-**Requirement 1 â€” Universal Input**
+**Requirement 1 — Universal Input**
 The input is no longer always a CSV file. It can be a PDF discovery
 report, a JSON export, an Excel spreadsheet, plain text, or any other
 format a customer provides. The system must handle all of these without
 code changes.
 
-**Requirement 2 â€” Database-Backed Knowledge Base**
+**Requirement 2 — Database-Backed Knowledge Base**
 The Knowledge Base must be stored in PostgreSQL with pgvector, not in
 local YAML files. This enables team access, audit trails, versioning,
 semantic search, and eliminates the single-developer dependency on
 local file state.
 
-**Requirement 3 â€” Live API Documentation Sync**
+**Requirement 3 — Live API Documentation Sync**
 The LLM must fetch the latest API documentation from source and target
 SCM platforms, compare it against the current KB, and propose or apply
 updates when the platform has changed. The KB must stay current
@@ -58,37 +57,31 @@ automatically, not require manual YAML edits.
 
 ### 1.3 What the System Will Do After This Plan
 
-
 ANY INPUT FILE (PDF, CSV, JSON, Excel, text)
-â†“
+↓
 Universal Parser extracts repository signals
-â†“
+↓
 LLM fetches latest SCM API docs and updates KB in DB
-â†“
+↓
 Deterministic engine classifies gaps with real usage impact
-â†“
+↓
 LangChain + Claude generates professional narrative
-â†“
+↓
 Report shows: gap classification + repo count + urgency + evidence
 
-```
 The report transforms from:
 
-Service Desk â†’ HARD_BLOCKER
-```
+Service Desk → HARD_BLOCKER
 
 Into:
 
-```
-Service Desk â†’ HARD_BLOCKER
+Service Desk → HARD_BLOCKER
 219 of 243 repositories affected (90.1%)
 Urgency: HIGH
 Evidence: service_desk_enabled field (243 rows scanned)
 KB last verified: 2026-08-11 (API docs fetched live)
 This will break immediately post-migration.
 Plan replacement before go-live.
-```
-
 
 ---
 
@@ -97,21 +90,20 @@ Plan replacement before go-live.
 One rule governs every design decision in this system. It must never
 be violated:
 
-
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ â”‚
-â”‚ DETERMINISTIC ENGINE â†’ DECIDES all migration facts â”‚
-â”‚ KB UPDATER + API SYNC â†’ KEEPS knowledge current â”‚
-â”‚ CLAUDE via LANGCHAIN â†’ EXPLAINS facts as narrative â”‚
-â”‚ â”‚
-â”‚ Claude never creates a blocker. â”‚
-â”‚ Claude never removes a blocker. â”‚
-â”‚ Claude never changes a risk level. â”‚
-â”‚ Claude never writes directly to any KB table. â”‚
-â”‚ Every number in the report traces back to an input signal. â”‚
-â”‚ Every KB update traces back to a source API doc URL. â”‚
-â”‚ â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│ DETERMINISTIC ENGINE → DECIDES all migration facts              │
+│ KB UPDATER + API SYNC → KEEPS knowledge current                 │
+│ CLAUDE via LANGCHAIN → EXPLAINS facts as narrative              │
+│                                                                 │
+│ Claude never creates a blocker.                                 │
+│ Claude never removes a blocker.                                 │
+│ Claude never changes a risk level.                              │
+│ Claude never writes directly to any KB table.                   │
+│ Every number in the report traces back to an input signal.      │
+│ Every KB update traces back to a source API doc URL.            │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 
 ---
 
@@ -133,31 +125,30 @@ be violated:
 
 ## 4. Three-Layer Architecture
 
-
-â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚ PARITY CHECK SYSTEM v3.0 â”‚
-â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
-â”‚ â”‚
-â”‚ Layer 1 â€” EVIDENCE (Universal Input + DB Knowledge Base) â”‚
-â”‚ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â”‚
-â”‚ Real signals extracted from any input format. â”‚
-â”‚ Curated, versioned, DB-stored capability declarations. â”‚
-â”‚ Live API documentation kept current automatically. â”‚
-â”‚ No inference in gap decisions. Ground truth only. â”‚
-â”‚ â”‚
-â”‚ Layer 2 â€” LOGIC (Deterministic Comparison Engine) â”‚
-â”‚ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â”‚
-â”‚ Structural diff of DB knowledge enriched with usage signals. â”‚
-â”‚ Same inputs always produce identical gap analysis. â”‚
-â”‚ Auditable, unit-testable. No LLM involved at this layer. â”‚
-â”‚ â”‚
-â”‚ Layer 3 â€” NARRATIVE (LangChain + AWS Bedrock Claude) â”‚
-â”‚ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â”‚
-â”‚ LLM receives pre-computed structured facts and generates â”‚
-â”‚ human-readable narrative. LLM explains facts. Never decides them. â”‚
-â”‚ LangChain enforces structured output via PydanticOutputParser. â”‚
-â”‚ â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+┌─────────────────────────────────────────────────────────────────────┐
+│ PARITY CHECK SYSTEM v3.0                                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│ Layer 1 — EVIDENCE (Universal Input + DB Knowledge Base)            │
+│ ─────────────────────────────────────────────────────────           │
+│ Real signals extracted from any input format.                       │
+│ Curated, versioned, DB-stored capability declarations.              │
+│ Live API documentation kept current automatically.                  │
+│ No inference in gap decisions. Ground truth only.                   │
+│                                                                     │
+│ Layer 2 — LOGIC (Deterministic Comparison Engine)                   │
+│ ─────────────────────────────────────────────────                   │
+│ Structural diff of DB knowledge enriched with usage signals.        │
+│ Same inputs always produce identical gap analysis.                  │
+│ Auditable, unit-testable. No LLM involved at this layer.            │
+│                                                                     │
+│ Layer 3 — NARRATIVE (LangChain + AWS Bedrock Claude)                │
+│ ────────────────────────────────────────────────────                │
+│ LLM receives pre-computed structured facts and generates            │
+│ human-readable narrative. LLM explains facts. Never decides them.   │
+│ LangChain enforces structured output via PydanticOutputParser.      │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 
 ---
 
@@ -167,9 +158,9 @@ be violated:
 
 ```mermaid
 flowchart TD
-    INPUT[Any Input File\nPDF Â· CSV Â· JSON Â· Excel Â· Text] --> STEP0
+    INPUT[Any Input File\nPDF · CSV · JSON · Excel · Text] --> STEP0
 
-    subgraph STEP0["Step 0 â€” Universal Document Parser"]
+    subgraph STEP0["Step 0 — Universal Document Parser"]
         S0A[Detect file type]
         S0B{Structured format?\nCSV / JSON / Excel}
         S0C[Deterministic Parser\nNo LLM]
@@ -185,13 +176,13 @@ flowchart TD
         S0E --> S0F --> S0G
     end
 
-    STEP0 --> US[Usage Signals\nrepo_count Â· percentage\nurgency Â· evidence]
+    STEP0 --> US[Usage Signals\nrepo_count · percentage\nurgency · evidence]
     STEP0 --> UC[Unrecognized Signals\nnot in KB]
 
     UC --> STEP05
     US --> STEP05
 
-    subgraph STEP05["Step 0.5 â€” KB Updater + Live API Doc Sync"]
+    subgraph STEP05["Step 0.5 — KB Updater + Live API Doc Sync"]
         K0[For each capability in scope]
         K1[Fetch source SCM API docs]
         K2[Fetch target SCM API docs]
@@ -213,14 +204,14 @@ flowchart TD
 
     STEP05 --> STEP1
 
-    subgraph STEP1["Step 1 â€” Init"]
+    subgraph STEP1["Step 1 — Init"]
         I1[SOURCE from Step 0]
         I2[TARGET from user]
         I3[Validate against DB taxonomy]
         I1 --> I2 --> I3
     end
 
-    subgraph STEP2["Step 2 â€” Load KB from DB"]
+    subgraph STEP2["Step 2 — Load KB from DB"]
         L1[Query capability_taxonomy]
         L2[Query platform_capabilities\nfor source + target]
         L3[Query known_gaps\nfor migration path]
@@ -228,7 +219,7 @@ flowchart TD
         L1 & L2 & L3 & L4 --> L5[KB Loaded]
     end
 
-    subgraph STEP3["Step 3 â€” Compare"]
+    subgraph STEP3["Step 3 — Compare"]
         C1[Deterministic Gap Classification]
         C2[Attach Usage Signals]
         C3[Apply Derived Policy Conditions]
@@ -236,15 +227,15 @@ flowchart TD
         C1 --> C2 --> C3 --> C4
     end
 
-    subgraph STEP4["Step 4 â€” Generate Report"]
+    subgraph STEP4["Step 4 — Generate Report"]
         G1[Build Structured Fact Payload]
         G2[LangChain PromptTemplate]
-        G3[ChatBedrock â€” Claude]
+        G3[ChatBedrock — Claude]
         G4[PydanticOutputParser\n5-section enforcement]
         G1 --> G2 --> G3 --> G4
     end
 
-    subgraph STEP5["Step 5 â€” Export"]
+    subgraph STEP5["Step 5 — Export"]
         E1[Write .md to EFS]
         E2[Write .json to EFS]
         E3[Store in parity.parity_reports]
@@ -257,7 +248,6 @@ flowchart TD
 ### 5.2 Universal Input Processing Flow
 
 ```mermaid
-
 flowchart TD
     A[Input File] --> B{File Extension?}
 
@@ -291,7 +281,6 @@ flowchart TD
 ### 5.3 KB Self-Evolution and API Doc Sync Flow
 
 ```mermaid
-
 flowchart TD
     A[Step 0.5 Triggered] --> B[Load capabilities in scope\nfrom parity.capability_taxonomy]
 
@@ -305,8 +294,8 @@ flowchart TD
 
     F --> G{Hash matches\napi_doc_cache?}
 
-    G -->|Yes â€” no change| H[Log: KB current\nno update needed]
-    G -->|No â€” content changed| I[LLM analyzes diff\nbetween old and new doc]
+    G -->|Yes — no change| H[Log: KB current\nno update needed]
+    G -->|No — content changed| I[LLM analyzes diff\nbetween old and new doc]
 
     I --> J[LLM proposes\nKB update with reasoning]
 
@@ -326,10 +315,9 @@ flowchart TD
     R --> K
 ```
 
-### 5.4 Report Generation â€” LangChain Pipeline
+### 5.4 Report Generation — LangChain Pipeline
 
 ```mermaid
-
 flowchart TD
     A[Deterministic Facts\nfrom Step 3] --> B
 
@@ -358,7 +346,7 @@ flowchart TD
     G --> J[JSON Report]
     G --> K[Store in\nparity.parity_reports]
 
-    subgraph SK["Skip-Bedrock Mode â€” CI / Deterministic"]
+    subgraph SK["Skip-Bedrock Mode — CI / Deterministic"]
         SK1[Deterministic template\nfills all sections]
         SK2[No AWS required]
         SK3[No LangChain call]
@@ -373,7 +361,6 @@ flowchart TD
 ### 5.5 KB Write Safety Model
 
 ```mermaid
-
 flowchart TD
     A[KB update proposed\nby LLM] --> B{Source?}
 
@@ -397,97 +384,49 @@ flowchart TD
     M[Human approval required\nvia kb_update_proposals review]
 ```
 
+---
+
 ## 6. Database Schema
 
 ### 6.1 Why PostgreSQL + pgvector
 
 | **Capability** | **PostgreSQL alone** | **PostgreSQL + pgvector** |
-
-
-
-
-
-Store structured KB records
-
-âœ…
-
-âœ…
-
-Exact field lookup by capability ID
-
-âœ…
-
-âœ…
-
-API-level audit trail and versioning
-
-âœ…
-
-âœ…
-
-Semantic similarity search
-
-âŒ
-
-âœ…
-
-Match unstructured PDF signals to capabilities
-
-âŒ
-
-âœ…
-
-Store API doc embeddings for change detection
-
-âŒ
-
-âœ…
-
-Find related capabilities by meaning not keyword
-
-âŒ
-
-âœ…
+|---|---:|---:|
+| Store structured KB records | ✅ | ✅ |
+| Exact field lookup by capability ID | ✅ | ✅ |
+| API-level audit trail and versioning | ✅ | ✅ |
+| Semantic similarity search | ❌ | ✅ |
+| Match unstructured PDF signals to capabilities | ❌ | ✅ |
+| Store API doc embeddings for change detection | ❌ | ✅ |
+| Find related capabilities by meaning not keyword | ❌ | ✅ |
 
 pgvector enables the system to match an input document that says
 "we use pull request approval workflows" to the capability
-review.approval_rulesÂ without exact keyword matching. This is
+**`review.approval_rules`** without exact keyword matching. This is
 essential for unstructured input formats like PDF.
 
 ### 6.2 Why Not Local YAML Files
 
 | **Concern** | **YAML Files** | **PostgreSQL** |
-| --- | --- | --- |
-| Team access | âŒ One developer's machine | âœ… Shared, access-controlled |
-| Audit trail | âŒ Git history only | âœ… Full row-level log |
-
-| Concurrent updates | âŒ Merge conflicts | âœ… Transactional |
-
-| Semantic search | âŒ Not possible | âœ… pgvector |
-
-| API doc hash comparison | âŒ Manual | âœ… Automated per row |
-
-| Rollback a bad update | âš ï¸ Git revert | âœ… SQL UPDATE / soft delete |
-
-âœ… SQL UPDATE / soft delete
-
-Human review workflow
-
-âŒ Pull request only
-
-âœ…Â kb_update_proposalsÂ table
+|---|---|---|
+| Team access | ❌ One developer's machine | ✅ Shared, access-controlled |
+| Audit trail | ❌ Git history only | ✅ Full row-level log |
+| Concurrent updates | ❌ Merge conflicts | ✅ Transactional |
+| Semantic search | ❌ Not possible | ✅ pgvector |
+| API doc hash comparison | ❌ Manual | ✅ Automated per row |
+| Rollback a bad update | ⚠️ Git revert | ✅ SQL UPDATE / soft delete |
+| Human review workflow | ❌ Pull request only | ✅ **`kb_update_proposals`** table |
 
 ### 6.3 Full Schema
 
-\\\sql
-
--- â”€â”€ SETUP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+```sql
+-- ── SETUP ────────────────────────────────────────────────────────────
 
 CREATE SCHEMA IF NOT EXISTS parity;
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- â”€â”€ CAPABILITY TAXONOMY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── CAPABILITY TAXONOMY ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.capability_taxonomy (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -504,7 +443,7 @@ COMMENT ON TABLE parity.capability_taxonomy IS
   '54 canonical capability IDs. New entries require human approval only.
    Never auto-written by the KB Updater.';
 
--- â”€â”€ PLATFORM CAPABILITIES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── PLATFORM CAPABILITIES ────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.platform_capabilities (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -535,7 +474,7 @@ COMMENT ON COLUMN parity.platform_capabilities.api_doc_snapshot IS
   'Full text of the API documentation page at last_verified time.
    Used for change detection against live fetches.';
 
--- â”€â”€ KNOWN GAPS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── KNOWN GAPS ───────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.known_gaps (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -560,7 +499,7 @@ COMMENT ON TABLE parity.known_gaps IS
    New entries require human approval only.
    Never auto-written by the KB Updater.';
 
--- â”€â”€ DISCOVERY MAPPING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── DISCOVERY MAPPING ────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.discovery_mapping (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -592,7 +531,7 @@ COMMENT ON COLUMN parity.discovery_mapping.signal_name IS
    For JSON: the key path.
    For PDF: the extracted concept label from LLM.';
 
--- â”€â”€ KB UPDATE PROPOSALS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── KB UPDATE PROPOSALS ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.kb_update_proposals (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -619,7 +558,7 @@ COMMENT ON COLUMN parity.kb_update_proposals.proposal_type IS
 COMMENT ON COLUMN parity.kb_update_proposals.status IS
   'One of: pending, approved, rejected, auto_applied';
 
--- â”€â”€ KB UPDATE LOG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── KB UPDATE LOG ────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.kb_update_log (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -640,7 +579,7 @@ COMMENT ON TABLE parity.kb_update_log IS
   'Append-only audit log of every KB update event.
    Never truncated or modified. Permanent record.';
 
--- â”€â”€ API DOCUMENTATION CACHE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── API DOCUMENTATION CACHE ──────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.api_doc_cache (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -660,7 +599,7 @@ COMMENT ON TABLE parity.api_doc_cache IS
    per capability. Used for change detection on subsequent fetches.
    doc_hash is SHA-256 of doc_content for efficient comparison.';
 
--- â”€â”€ PARITY REPORT RESULTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── PARITY REPORT RESULTS ────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS parity.parity_reports (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -687,7 +626,7 @@ COMMENT ON COLUMN parity.parity_reports.kb_doc_versions IS
    at the time this report was generated. Enables full traceability
    of which KB version produced this report.';
 
--- â”€â”€ INDEXES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── INDEXES ──────────────────────────────────────────────────────────
 
 CREATE INDEX IF NOT EXISTS idx_platform_caps_platform
   ON parity.platform_capabilities (platform);
@@ -731,7 +670,7 @@ CREATE INDEX IF NOT EXISTS idx_parity_reports_execution
 CREATE INDEX IF NOT EXISTS idx_parity_reports_platforms
   ON parity.parity_reports (source_platform, target_platform);
 
--- Vector similarity indexes (HNSW â€” best for production read performance)
+-- Vector similarity indexes (HNSW — best for production read performance)
 CREATE INDEX IF NOT EXISTS idx_taxonomy_embedding
   ON parity.capability_taxonomy
   USING hnsw (embedding vector_cosine_ops);
@@ -743,60 +682,45 @@ CREATE INDEX IF NOT EXISTS idx_known_gaps_embedding
 CREATE INDEX IF NOT EXISTS idx_api_doc_embedding
   ON parity.api_doc_cache
   USING hnsw (embedding vector_cosine_ops);
+```
+
+---
 
 ## 7. Knowledge Base Design
 
 ### 7.1 What Was in YAML, Now in DB
 
-Every file that existed inÂ capability_kb/Â is now a database table.
-
-Old FileNew DB TableWrite Rules
+Every file that existed in **`capability_kb/`** is now a database table.
 
 | **Old File** | **New DB Table** | **Write Rules** |
-| --- | --- |
-
-
-
-
-
-capability_taxonomy.yaml
-
-parity.capability_taxonomy
-
-Human approval only
-
-| platforms/*.yaml | parity.platform_capabilities | Human approval OR HIGH-confidence auto-update from API docs |
-
-| known_gaps.yaml | parity.known_gaps | Human approval only |
-
-| discovery_mapping.yaml | parity.discovery_mapping | Human approval OR HIGH-confidence auto-classification |
-
-| kb_update_proposals.yaml | parity.kb_update_proposals | Written by KB Updater; reviewed by humans |
-
-| kb_update_log.yaml | parity.kb_update_log | Written by KB Updater; never modified |
+|---|---|---|
+| **`capability_taxonomy.yaml`** | **`parity.capability_taxonomy`** | Human approval only |
+| **`platforms/*.yaml`** | **`parity.platform_capabilities`** | Human approval OR HIGH-confidence auto-update from API docs |
+| **`known_gaps.yaml`** | **`parity.known_gaps`** | Human approval only |
+| **`discovery_mapping.yaml`** | **`parity.discovery_mapping`** | Human approval OR HIGH-confidence auto-classification |
+| **`kb_update_proposals.yaml`** | **`parity.kb_update_proposals`** | Written by KB Updater; reviewed by humans |
+| **`kb_update_log.yaml`** | **`parity.kb_update_log`** | Written by KB Updater; never modified |
 
 ### 7.2 Discovery Mapping Schema (DB Version)
 
-TheÂ parity.discovery_mappingÂ table replacesÂ discovery_mapping.yaml.
+The **`parity.discovery_mapping`** table replaces **`discovery_mapping.yaml`**.
+
 Key differences from the YAML version:
 
-signal_nameÂ is now format-agnostic â€” it can be a CSV column name,
-a JSON key path, or a concept label extracted from PDF
-
-file_typesÂ array indicates which input formats this mapping applies
-to (empty = all formats)
-
-auto_addedÂ flag indicates whether the row was written by the KB
-Updater or by a human
+- **`signal_name`** is now format-agnostic — it can be a CSV column name,
+  a JSON key path, or a concept label extracted from PDF
+- **`file_types`** array indicates which input formats this mapping applies
+  to (empty = all formats)
+- **`auto_added`** flag indicates whether the row was written by the KB
+  Updater or by a human
 
 ### 7.3 Usage Signal Schema (Unchanged)
 
 Every capability in the pipeline output carries this structure after
-Step 0 runs. This schema is unchanged from v2.0 â€” downstream steps
+Step 0 runs. This schema is unchanged from v2.0 — downstream steps
 are unaffected:
 
-JSON
-
+```json
 {
   "review.draft_pr": {
     "repo_count": 131,
@@ -818,223 +742,104 @@ JSON
 ### 7.4 KB Write Safety Rules
 
 | **Table** | **Auto-write Allowed** | **Condition** |
-
-
-
-
-
-| parity.discovery_mapping | Yes | Confidence HIGH only |
-
-| parity.platform_capabilities | Yes | HIGH-confidence API doc update only |
-
-parity.api_doc_cache
-
-âœ… Yes
-
-Always â€” on every fetch
-
-parity.kb_update_log
-
-âœ… Yes
-
-Always â€” audit trail
-
-parity.kb_update_proposals
-
-âœ… Yes
-
-Staging only â€” not live KB
-
-parity.capability_taxonomy
-
-âŒ Never
-
-Human approval required
-
-parity.known_gaps
-
-âŒ Never
-
-Human approval required
+|---|---|---|
+| **`parity.discovery_mapping`** | ✅ Yes | Confidence HIGH only |
+| **`parity.platform_capabilities`** | ✅ Yes | HIGH-confidence API doc update only |
+| **`parity.api_doc_cache`** | ✅ Yes | Always — on every fetch |
+| **`parity.kb_update_log`** | ✅ Yes | Always — audit trail |
+| **`parity.kb_update_proposals`** | ✅ Yes | Staging only — not live KB |
+| **`parity.capability_taxonomy`** | ❌ Never | Human approval required |
+| **`parity.known_gaps`** | ❌ Never | Human approval required |
 
 ### 7.5 API Documentation Sources
 
 | **Platform** | **Primary Doc URL Pattern** |
-| --- | --- |
+|---|---|
+| GitLab | **`https://docs.gitlab.com/ee/api/`** |
+| GitHub | **`https://docs.github.com/en/rest`** |
+| Azure DevOps | **`https://learn.microsoft.com/en-us/rest/api/azure/devops`** |
+| Bitbucket | **`https://developer.atlassian.com/cloud/bitbucket/rest`** |
 
-
-
-| GitLab | https://docs.gitlab.com/ee/api/ |
-
-| GitHub | https://docs.github.com/en/rest |
-
-| Azure DevOps | https://learn.microsoft.com/en-us/rest/api/azure/devops |
-
-| Bitbucket | https://developer.atlassian.com/cloud/bitbucket/rest |
-
-Each capability inÂ parity.platform_capabilitiesÂ will have a specific
-doc URL stored inÂ verification_source. The KB Updater fetches that
-URL, computes SHA-256, compares againstÂ api_doc_cache.doc_hash, and
+Each capability in **`parity.platform_capabilities`** will have a specific
+doc URL stored in **`verification_source`**. The KB Updater fetches that
+URL, computes SHA-256, compares against **`api_doc_cache.doc_hash`**, and
 triggers an update proposal only when the hash differs.
+
+---
 
 ## 8. Component Specifications
 
-8.1 Step 0 â€” platform_parity_parse_discovery.py
+### 8.1 Step 0 — `platform_parity_parse_discovery.py`
 
 | **Property** | **Detail** |
-| --- | --- |
+|---|---|
+| Type | New script (replaces CSV-only parser) |
+| LLM involved | Yes — for unstructured formats (PDF, text) only |
+| LangChain involved | Yes — Document Loaders + BedrockEmbeddings |
+| Dependencies | **`csv`**, **`json`**, **`openpyxl`**, **`pypdf`**, LangChain loaders |
+| Input placeholders | **`INPUT_FILE_PATH`**, **`EXECUTION_ID`** |
 
+**Two processing paths:**
 
-Type
+**Path A — Structured (CSV, JSON, Excel):**
 
-New script (replaces CSV-only parser)
+- Deterministic field extraction
+- Exact match against **`parity.discovery_mapping`** table
+- No LLM call
+- Same logic as v2.0 CSV parser
 
-LLM involved
+**Path B — Unstructured (PDF, text, unknown):**
 
-Yes â€” for unstructured formats (PDF, text) only
+- LangChain Document Loader extracts text content
+- Text chunked with **`RecursiveCharacterTextSplitter`**
+- Bedrock Titan generates embeddings per chunk
+- Vector similarity search against **`parity.capability_taxonomy`**
+- LLM interprets matched sections and extracts signal values
 
-LangChain involved
-
-Yes â€” Document Loaders + BedrockEmbeddings
-
-Dependencies
-
-csv,Â json,Â openpyxl,Â pypdf, LangChain loaders
-
-Input placeholders
-
-INPUT_FILE_PATH,Â EXECUTION_ID
-
-Two processing paths:
-
-Path A â€” Structured (CSV, JSON, Excel):
-
-Deterministic field extraction
-
-Exact match againstÂ parity.discovery_mappingÂ table
-
-No LLM call
-
-Same logic as v2.0 CSV parser
-
-Path B â€” Unstructured (PDF, text, unknown):
-
-LangChain Document Loader extracts text content
-
-Text chunked withÂ RecursiveCharacterTextSplitter
-
-Bedrock Titan generates embeddings per chunk
-
-Vector similarity search againstÂ parity.capability_taxonomy
-
-LLM interprets matched sections and extracts signal values
-
-Platform detection:
+**Platform detection:**
 
 For structured inputs: score-based detection (unchanged from v2.0)
 
 For unstructured inputs:
 
-text
-
+```text
 Step 1: LLM reads document and identifies platform mentions
 Step 2: Score-based confirmation on identified signals
-Step 3: If score < 60 â†’ RuntimeError (ambiguous)
-
-Output keys (identical to v2.0 â€” downstream steps unaffected):
+Step 3: If score < 60 → RuntimeError (ambiguous)
+```
+**Output keys (identical to v2.0 — downstream steps unaffected):**
 
 | **Key** | **Type** | **Description** |
-| --- | --- | --- |
+|---|---|---|
+| **`source_platform`** | string | Detected platform |
+| **`platform_confidence`** | string | **`HIGH`** / **`MEDIUM`** / **`LOW`** |
+| **`platform_evidence`** | object | Detection signals found |
+| **`total_repos`** | int | Repository count (0 if not determinable) |
+| **`usage_signals`** | object | capability_id → enriched signal object |
+| **`unrecognized_signals`** | list | Signals not matched in DB |
+| **`column_stats`** | object | Raw per-signal aggregate stats |
+| **`input_file_type`** | string | Detected format: **`csv`** / **`json`** / **`pdf`** / **`excel`** / **`text`** |
 
+---
 
-
-
-
-source_platform
-
-string
-
-Detected platform
-
-platform_confidence
-
-string
-
-HIGHÂ /Â MEDIUMÂ /Â LOW
-
-platform_evidence
-
-object
-
-Detection signals found
-
-total_repos
-
-int
-
-Repository count (0 if not determinable)
-
-usage_signals
-
-object
-
-capability_id â†’ enriched signal object
-
-unrecognized_signals
-
-list
-
-Signals not matched in DB
-
-column_stats
-
-object
-
-Raw per-signal aggregate stats
-
-input_file_type
-
-string
-
-Detected format:Â csv/json/pdf/excel/text
-
-8.2 Step 0.5 â€” platform_parity_kb_updater.py
+### 8.2 Step 0.5 — `platform_parity_kb_updater.py`
 
 | **Property** | **Detail** |
-| --- | --- |
+|---|---|
+| Type | New script (replaces YAML-writing kb_updater) |
+| LLM involved | Yes — doc analysis + signal classification |
+| LangChain involved | Yes — WebBaseLoader + ChatBedrock + PydanticOutputParser |
+| Triggers | Always runs — API doc sync + unrecognized signal classification |
+| Input placeholders | **`KB_BASE_PATH`**, **`AUTO_UPDATE_THRESHOLD`**, **`EXECUTION_ID`** |
+| DB writes | **`parity.discovery_mapping`**, **`parity.platform_capabilities`**, **`parity.api_doc_cache`**, **`parity.kb_update_proposals`**, **`parity.kb_update_log`** |
 
+**Two responsibilities:**
 
-Type
-
-New script (replaces YAML-writing kb_updater)
-
-LLM involved
-
-Yes â€” doc analysis + signal classification
-
-LangChain involved
-
-Yes â€” WebBaseLoader + ChatBedrock + PydanticOutputParser
-
-Triggers
-
-Always runs â€” API doc sync + unrecognized signal classification
-
-Input placeholders
-
-KB_BASE_PATH,Â AUTO_UPDATE_THRESHOLD,Â EXECUTION_ID
-
-DB writes
-
-parity.discovery_mapping,Â parity.platform_capabilities,Â parity.api_doc_cache,Â parity.kb_update_proposals,Â parity.kb_update_log
-
-Two responsibilities:
-
-Responsibility 1 â€” Classify Unrecognized Signals
+**Responsibility 1 — Classify Unrecognized Signals**
 
 Same as v2.0 KB Updater, now writes to DB instead of YAML:
 
-\\\python
+```python
 class KBUpdateProposal(BaseModel):
     signal_name: str
     maps_to_capability: str       # existing capability_id or "NEW"
@@ -1044,13 +849,13 @@ class KBUpdateProposal(BaseModel):
     file_types: List[str]
     confidence: str               # HIGH / MEDIUM / LOW
     reasoning: str
+```
 
-Responsibility 2 â€” Live API Doc Sync (NEW)
+**Responsibility 2 — Live API Doc Sync (NEW)**
 
 For every capability touched in the current run:
 
-text
-
+```text
 1. Look up verification_source URL from parity.platform_capabilities
 2. Fetch URL content using LangChain WebBaseLoader
 3. Compute SHA-256 of fetched content
@@ -1059,24 +864,25 @@ text
      a. LLM analyzes: what changed? what does it mean for KB?
      b. LLM proposes specific field updates to platform_capabilities
      c. Confidence scored
-     d. HIGH â†’ auto-write to parity.platform_capabilities
-     e. MEDIUM/LOW â†’ insert to parity.kb_update_proposals
+     d. HIGH → auto-write to parity.platform_capabilities
+     e. MEDIUM/LOW → insert to parity.kb_update_proposals
      f. Update parity.api_doc_cache with new hash + embedding
 6. Always log to parity.kb_update_log
+```
 
-LangChain components:
+**LangChain components:**
 
-\\\python
+```python
 from langchain_aws import ChatBedrock, BedrockEmbeddings
 from langchain_community.document_loaders import WebBaseLoader
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+```
 
-What the LLM is asked for API doc analysis:
+**What the LLM is asked for API doc analysis:**
 
-text
-
+```text
 Given:
   - Capability: review.approval_rules
   - Platform: GitHub
@@ -1092,31 +898,29 @@ Answer:
   5. Does this change affect any behavioral_attrs? If yes, which ones?
   6. How confident are you? (HIGH / MEDIUM / LOW)
   7. Explain your reasoning in two sentences.
+```
 
-8.3 Step 1 â€” platform_parity_init.py (Modified)
+### 8.3 Step 1 — `platform_parity_init.py` (Modified)
 
-Changes from v2.0:
+**Changes from v2.0:**
 
-SOURCE_PLATFORMÂ reads from Step 0 output (same as v2.0)
+- **`SOURCE_PLATFORM`** reads from Step 0 output (same as v2.0)
+- Validates SOURCE and TARGET against **`parity.capability_taxonomy`**
+  (reads from DB, not YAML)
+- Passes DB connection parameters to downstream steps
 
-Validates SOURCE and TARGET againstÂ parity.capability_taxonomy
-(reads from DB, not YAML)
+---
 
-Passes DB connection parameters to downstream steps
+### 8.4 Step 2 — `platform_parity_load_kb.py` (Modified)
 
-8.4 Step 2 â€” platform_parity_load_kb.py (Modified)
+**Changes from v2.0:**
 
-Changes from v2.0:
+- Reads from **`parity.*`** tables instead of YAML files
+- Uses pgvector similarity search to load most relevant capabilities
+  for the current migration path
+- Output structure identical — downstream `compare.py` unaffected
 
-Reads fromÂ parity.*Â tables instead of YAML files
-
-Uses pgvector similarity search to load most relevant capabilities
-for the current migration path
-
-Output structure identical â€” downstream compare.py unaffected
-
-Python
-
+```python
 # Replaces: yaml.safe_load(open("capability_taxonomy.yaml"))
 # With:
 taxonomy = db_session.execute(
@@ -1134,18 +938,20 @@ source_caps = db_session.execute(
     "WHERE platform = :platform",
     {"platform": source_platform}
 ).fetchall()
+```
 
-8.5 Step 3 â€” platform_parity_compare.py (Enhanced)
+### 8.5 Step 3 — `platform_parity_compare.py` (Enhanced)
 
-Changes from v2.0:
+**Changes from v2.0:**
 
-Reads usage signals from Step 0 output (unchanged)
+- Reads usage signals from Step 0 output (unchanged)
+- Attaches usage signals to gap objects (unchanged)
+- **NEW:** Applies derived policy conditions from Step 0
 
-Attaches usage signals to gap objects (unchanged)
+Gap object schema (unchanged from v2.0):
 
-NEW:Â Applies derived policy conditions from Step 0
-
-Gap object schema (unchanged from v2.0):\n\n\\\json\n{
+```json
+{
   "capability_id": "service_desk",
   "classification": "HARD_BLOCKER",
   "repo_count": 219,
@@ -1160,52 +966,32 @@ Gap object schema (unchanged from v2.0):\n\n\\\json\n{
     "file_type": "csv"
   }
 }
+```
 
-Usage-aware risk weighting (unchanged from v2.0):\n\n| **Condition** | **Risk Level** |
-| --- | --- |
+**Usage-aware risk weighting (unchanged from v2.0):**
 
+| **Condition** | **Risk Level** |
+|---|---|
+| Hard blocker + usage ≥ 50% | CRITICAL |
+| Hard blocker + usage 10–49% | HIGH |
+| Hard blocker + usage < 10% | HIGH (serious, lower priority) |
+| Behavioral diff + usage ≥ 50% | HIGH |
+| Behavioral diff + usage < 50% | MEDIUM |
+| Partial support only | MEDIUM |
+| All seamless | LOW |
 
+---
 
-Hard blocker + usage â‰¥ 50%
+### 8.6 Step 4 — `platform_parity_generate_report.py` (Modified)
 
-CRITICAL
+**Changes from v2.0:**
 
-Hard blocker + usage 10â€“49%
+- LangChain chain structure unchanged
+- Cache now reads/writes **`parity.parity_reports`** table (not file cache)
+- Report includes **`kb_doc_versions`** showing which API doc versions
+  were used
 
-HIGH
-
-Hard blocker + usage < 10%
-
-HIGH (serious, lower priority)
-
-Behavioral diff + usage â‰¥ 50%
-
-HIGH
-
-Behavioral diff + usage < 50%
-
-MEDIUM
-
-Partial support only
-
-MEDIUM
-
-All seamless
-
-LOW
-
-8.6 Step 4 â€” platform_parity_generate_report.py (Modified)
-
-Changes from v2.0:
-
-LangChain chain structure unchanged
-
-Cache now reads/writesÂ parity.parity_reportsÂ table (not file cache)
-
-Report includesÂ kb_doc_versionsÂ showing which API doc versions
-were used
-
-\\\python
+```python
 from langchain_aws import ChatBedrock
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
@@ -1219,11 +1005,11 @@ class ParityReport(BaseModel):
     coverage_section: str
 
 chain = PromptTemplate(...) | ChatBedrock(...) | PydanticOutputParser(...)
+```
 
-System instruction (unchanged â€” Claude explains, never decides):
+**System instruction (unchanged — Claude explains, never decides):**
 
-text
-
+```text
 The supplied facts are authoritative.
 Do not invent capabilities.
 Do not alter classifications.
@@ -1231,126 +1017,66 @@ Do not introduce workarounds not present in the input.
 Do not change risk levels.
 Your responsibility is explanation only.
 Reference repository counts and urgency in every section you write.
+```
 
-8.7 Step 5 â€” platform_parity_export.py (Modified)
+### 8.7 Step 5 — platform_parity_export.py (Modified)
 
-Changes from v2.0:
+**Changes from v2.0:**
 
-WritesÂ .mdÂ andÂ .jsonÂ to EFS (unchanged)
+- Writes **`.md`** and **`.json`** to EFS (unchanged)
+- **NEW:** Stores report in **`parity.parity_reports`** table
+- **NEW:** Stores **`kb_doc_versions`** snapshot for traceability
 
-NEW:Â Stores report inÂ parity.parity_reportsÂ table
-
-NEW:Â StoresÂ kb_doc_versionsÂ snapshot for traceability
+---
 
 ## 9. Complete File Change Register
 
-New Files
+### New Files
 
 | **File** | **Purpose** |
-| --- | --- |
+| ----------------------------------------------- | --------------------------------------------- |
+| **`db/migrations/001_parity_schema.sql`** | Full DB schema — all parity.* tables |
+| **`db/migrations/002_seed_from_yaml.py`** | One-time seed: imports existing YAML data into DB |
+| **`scripts/platform_parity_parse_discovery.py`** | Step 0 — Universal multi-format parser |
+| **`scripts/platform_parity_kb_updater.py`** | Step 0.5 — KB updater + live API doc sync |
+| **`scripts/platform_parity_db_init.py`** | Utility: run schema migration + seed |
+| **`metadata/platform_parity_parse_discovery.txt`** | Script descriptor |
+| **`metadata/platform_parity_kb_updater.txt`** | Script descriptor |
+| **`platform_parity_run.py`** | CLI entry point — accepts any input file |
 
-Full DB schema â€” all parity.* tables
-
-| db/migrations/002_seed_from_yaml.py | One-time seed: imports existing YAML data into DB |
-
-scripts/platform_parity_parse_discovery.py
-
-Step 0 â€” Universal multi-format parser
-
-scripts/platform_parity_kb_updater.py
-
-Step 0.5 â€” KB updater + live API doc sync
-
-| scripts/platform_parity_db_init.py | Utility: run schema migration + seed |
-
-metadata/platform_parity_parse_discovery.txt
-
-Script descriptor
-
-metadata/platform_parity_kb_updater.txt
-
-Script descriptor
-
-platform_parity_run.py
-
-CLI entry point â€” accepts any input file
-
-Modified Files
+### Modified Files
 
 | **File** | **Change** |
+| ------------------------------------------------ | ------------------------------------------------ |
+| **`scripts/platform_parity_init.py`** | SOURCE from Step 0; validates against DB |
+| **`scripts/platform_parity_load_kb.py`** | Reads from **`parity.*`** tables not YAML |
+| **`scripts/platform_parity_compare.py`** | Attaches usage signals; applies derived policies |
+| **`scripts/platform_parity_generate_report.py`** | LangChain chain; DB cache |
+| **`scripts/platform_parity_export.py`** | Stores in **`parity.parity_reports`** |
+| **`workflow/platform_parity_workflow.json`** | Adds Steps 0 and 0.5; DB connection params |
+| **`test_bedrock_e2e.py`** | **`--input`** accepts any file; DB mode |
 
-
-
-scripts/platform_parity_init.py
-
-SOURCE from Step 0; validates against DB
-
-scripts/platform_parity_load_kb.py
-
-Reads fromÂ parity.*Â tables not YAML
-
-scripts/platform_parity_compare.py
-
-Attaches usage signals; applies derived policies
-
-scripts/platform_parity_generate_report.py
-
-LangChain chain; DB cache
-
-scripts/platform_parity_export.py
-
-Stores inÂ parity.parity_reports
-
-workflow/platform_parity_workflow.json
-
-Adds Steps 0 and 0.5; DB connection params
-
-test_bedrock_e2e.py
-
---inputÂ accepts any file; DB mode
-
-Retired Files (Data Migrated to DB)
+### Retired Files (Data Migrated to DB)
 
 | **File** | **Replaced By** |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| **`capability_kb/capability_taxonomy.yaml`** | **`parity.capability_taxonomy`** |
+| **`capability_kb/known_gaps.yaml`** | **`parity.known_gaps`** |
+| **`capability_kb/platforms/gitlab.yaml`** | **`parity.platform_capabilities`** WHERE platform='gitlab' |
+| **`capability_kb/platforms/github.yaml`** | **`parity.platform_capabilities`** WHERE platform='github' |
+| **`capability_kb/platforms/azure_devops.yaml`** | **`parity.platform_capabilities`** WHERE platform='azure_devops' |
+| **`capability_kb/platforms/bitbucket.yaml`** | **`parity.platform_capabilities`** WHERE platform='bitbucket' |
+| **`capability_kb/discovery_mapping.yaml`** | **`parity.discovery_mapping`** |
 
+> ***These files are not deleted. They are archived to***
+> ***`capability_kb/archive/`*** **and kept as backup. The pipeline no longer**
+> **reads from them after migration.**
 
-
-capability_kb/capability_taxonomy.yaml
-
-parity.capability_taxonomy
-
-capability_kb/known_gaps.yaml
-
-parity.known_gaps
-
-capability_kb/platforms/gitlab.yaml
-
-parity.platform_capabilitiesÂ WHERE platform='gitlab'
-
-capability_kb/platforms/github.yaml
-
-parity.platform_capabilitiesÂ WHERE platform='github'
-
-capability_kb/platforms/azure_devops.yaml
-
-parity.platform_capabilitiesÂ WHERE platform='azure_devops'
-
-capability_kb/platforms/bitbucket.yaml
-
-parity.platform_capabilitiesÂ WHERE platform='bitbucket'
-
-capability_kb/discovery_mapping.yaml
-
-parity.discovery_mapping
-
-These files are not deleted.Â They are archived to
-capability_kb/archive/***Â and kept as backup. The pipeline no longer***
-reads from them after migration.
+---
 
 ## 10. Updated Workflow Definition
 
-JSON
-
+```json
 {
   "name": "platform_parity_check",
   "steps": [
@@ -1404,254 +1130,191 @@ JSON
     }
   ]
 }
+```
 
-Key changes from v2.0:
-CSV_PATH***Â â†’Â INPUT_FILE_PATHÂ (accepts any format)***
-KB_BASE_PATH***Â removed â€” KB is now in DB***
-DB_CONNECTION_STRING***Â added to Steps 0, 0.5, and 1***
-SOURCE_PLATFORM***Â remains absent from init values â€” comes from Step 0***
+***Key changes from v2.0:***
+
+- ***`CSV_PATH`*** → ***`INPUT_FILE_PATH`*** (accepts any format)
+- ***`KB_BASE_PATH`*** removed — KB is now in DB
+- ***`DB_CONNECTION_STRING`*** added to Steps 0, 0.5, and 1
+- ***`SOURCE_PLATFORM`*** remains absent from init values — comes from Step 0
+
+---
 
 ## 11. Implementation Phases
 
-Phase 1 â€” Database Schema and Data Migration
+### Phase 1 — Database Schema and Data Migration
+
+**Duration:** 2–3 days  
+**Goal:** Create all DB tables, indexes, and migrate existing YAML data  
+**LLM involved:** No  
+**Dependencies:** None — this is the foundation everything else builds on
+
+| **Deliverable** | **Description** |
+| ----------------------------------------- | ------------------------------------------------- |
+| **`db/migrations/001_parity_schema.sql`** | Full schema with all tables, constraints, indexes |
+| **`db/migrations/002_seed_from_yaml.py`** | Reads existing YAML files, inserts into DB tables |
+| **`scripts/platform_parity_db_init.py`** | Runner: applies migration + seed in correct order |
+
+**What the seed script does:**
+
+- Reads **`capability_taxonomy.yaml`** → inserts into **`parity.capability_taxonomy`**
+- Reads each **`platforms/*.yaml`** → inserts into **`parity.platform_capabilities`**
+- Reads **`known_gaps.yaml`** → inserts into **`parity.known_gaps`**
+- Reads **`discovery_mapping.yaml`** → inserts into **`parity.discovery_mapping`**
+- Generates embeddings for each record using Bedrock Titan
+- Moves original YAML files to **`capability_kb/archive/`**
+
+**Acceptance criteria:**
+
+- All tables created with correct types, constraints, and indexes
+- pgvector extension enabled, HNSW indexes created
+- All 54 capability IDs seeded into taxonomy table
+- All platform capabilities seeded with correct platform tags
+- All known gaps seeded with correct migration path values
+- Embeddings generated and stored for all taxonomy and known gap rows
+- Original YAML data preserved in archive, not deleted
+- **`python scripts/platform_parity_db_init.py --verify`** passes all checks
+
+---
+
+### Phase 2 — Update Load KB to Read from DB
+
+**Duration:** 1–2 days  
+**Goal:** **`load_kb.py`** queries DB; all downstream steps remain unchanged  
+**LLM involved:** No  
+**Dependencies:** Phase 1
+
+**Acceptance criteria:**
+
+- All KB data comes from **`parity.*`** table queries
+- Output structure identical to current YAML-based output
+- **`--skip-bedrock`** mode works without AWS (DB is always available)
+- No changes required to **`compare.py`** or **`generate_report.py`**
+- Existing test suite passes without modification
+
+---
 
-Duration:Â 2â€“3 days
-Goal:Â Create all DB tables, indexes, and migrate existing YAML data
-LLM involved:Â No
-Dependencies:Â None â€” this is the foundation everything else builds on
+### Phase 3 — Universal Document Parser (Step 0)
+
+**Duration:** 3–4 days  
+**Goal:** Multi-format input parser producing consistent usage signals  
+**LLM involved:** Yes — for unstructured formats only  
+**Dependencies:** Phase 1
 
-DeliverableDescription
+| **Deliverable** | **Description** |
+| -------------------------------------------------- | ----------------- |
+| **`scripts/platform_parity_parse_discovery.py`** | Universal parser |
+| **`metadata/platform_parity_parse_discovery.txt`** | Script descriptor |
 
+**Acceptance criteria:**
 
+- CSV input produces identical output to v2.0 parser
+- JSON input parsed deterministically without LLM
+- Excel input parsed deterministically without LLM
+- PDF input extracts meaningful signals via LangChain + LLM
+- Plain text input extracts meaningful signals via LangChain + LLM
+- All output signals matched against **`parity.discovery_mapping`** via DB
+- Unrecognized signals collected and passed to Step 0.5
+- Platform detection works for all supported formats
+- **`--skip-bedrock`** bypasses LLM path; processes structured formats only
+- Raises **`RuntimeError`** (not **`sys.exit`**) on all failure conditions
 
-db/migrations/001_parity_schema.sql
+---
 
-Full schema with all tables, constraints, indexes
+### Phase 4 — KB Updater + Live API Doc Sync (Step 0.5)
 
-db/migrations/002_seed_from_yaml.py
+**Duration:** 3–4 days  
+**Goal:** Classify unknowns + fetch live API docs + keep KB current  
+**LLM involved:** Yes  
+**Dependencies:** Phases 1, 3
 
-Reads existing YAML files, inserts into DB tables
+| **Deliverable** | **Description** |
+| --------------------------------------------- | ---------------------------- |
+| **`scripts/platform_parity_kb_updater.py`** | KB updater with API doc sync |
+| **`metadata/platform_parity_kb_updater.txt`** | Script descriptor |
 
-scripts/platform_parity_db_init.py
+**Acceptance criteria:**
 
-Runner: applies migration + seed in correct order
+- Fetches API docs for all capabilities in current run scope
+- Correctly detects changed docs via SHA-256 hash comparison
+- Updates **`parity.api_doc_cache`** on every fetch
+- LLM proposes specific field updates — not vague summaries
+- HIGH confidence updates auto-written to **`parity.platform_capabilities`**
+- MEDIUM/LOW inserts to **`parity.kb_update_proposals`** with status **`pending`**
+- All activity logged to **`parity.kb_update_log`**
+- Graceful fallback when doc URL is unreachable (uses cached version)
+- Never writes to **`parity.capability_taxonomy`** or **`parity.known_gaps`**
+- No-ops cleanly when all docs are fresh and no unrecognized signals
+- **`--skip-bedrock`** skips this step entirely
 
-What the seed script does:
+---
 
-ReadsÂ capability_taxonomy.yamlÂ â†’ inserts intoÂ parity.capability_taxonomy
+### Phase 5 — Enhance Compare Script
 
-Reads eachÂ platforms/*.yamlÂ â†’ inserts intoÂ parity.platform_capabilities
+**Duration:** 1–2 days  
+**Goal:** Apply derived policy conditions from Step 0 in gap analysis  
+**LLM involved:** No  
+**Dependencies:** Phase 3
 
-ReadsÂ known_gaps.yamlÂ â†’ inserts intoÂ parity.known_gaps
+**Acceptance criteria:**
 
-ReadsÂ discovery_mapping.yamlÂ â†’ inserts intoÂ parity.discovery_mapping
+- All existing gap classification logic completely unchanged
+- Usage signals attached to gap objects from Step 0
+- Derived policy conditions evaluated and attached to gap objects
+- Usage-aware risk weighting applied as per table in Section 8.5
+- **`evidence.file_type`** populated in every gap object
 
-Generates embeddings for each record using Bedrock Titan
+---
 
-Moves original YAML files toÂ capability_kb/archive/
+### Phase 6 — Enhance Generate Report with LangChain
 
-Acceptance criteria:
+**Duration:** 2–3 days  
+**Goal:** DB-backed caching; report stored in **`parity.parity_reports`**  
+**LLM involved:** Yes  
+**Dependencies:** Phase 1, Phase 5
 
-All tables created with correct types, constraints, and indexes
+**Acceptance criteria:**
 
-pgvector extension enabled, HNSW indexes created
+- LangChain chain identical to v2.0 (PromptTemplate + ChatBedrock + Pydantic)
+- Cache check reads **`parity.parity_reports`** WHERE `report_hash` matches
+- Report stored in **`parity.parity_reports`** after generation
+- **`kb_doc_versions`** snapshot stored with every report
+- **`--skip-bedrock`** bypasses LangChain; deterministic template used
+- All 5 sections enforced by PydanticOutputParser
 
-All 54 capability IDs seeded into taxonomy table
+---
 
-All platform capabilities seeded with correct platform tags
+### Phase 7 — Export Update
 
-All known gaps seeded with correct migration path values
+**Duration:** 0.5 days  
+**Goal:** Export to EFS + store in DB  
+**LLM involved:** No  
+**Dependencies:** Phase 6
 
-Embeddings generated and stored for all taxonomy and known gap rows
+**Acceptance criteria:**
 
-Original YAML data preserved in archive, not deleted
+- **`.md`** and **`.json`** still written to EFS (unchanged)
+- Report record written to **`parity.parity_reports`**
+- **`kb_doc_versions`** included in stored record
 
-python scripts/platform_parity_db_init.py --verifyÂ passes all checks
+---
 
-Phase 2 â€” Update Load KB to Read from DB
+### Phase 8 — CLI, Workflow, Test Runner
 
-Duration:Â 1â€“2 days
-Goal:Â load_kb.pyÂ queries DB; all downstream steps remain unchanged
-LLM involved:Â No
-Dependencies:Â Phase 1
+**Duration:** 1–2 days  
+**Goal:** Wire all phases together; update CLI and test runner  
+**Dependencies:** All previous phases
 
-Acceptance criteria:
+| **Deliverable** | **Change** |
+| -------------------------------------------- | --------------------------------------------- |
+| **`platform_parity_run.py`** | **`--input`** accepts any file path |
+| **`workflow/platform_parity_workflow.json`** | DB params added; Steps 0 and 0.5 added |
+| **`test_bedrock_e2e.py`** | **`--input`** accepts any file; DB test mode |
 
-All KB data comes fromÂ parity.*Â table queries
+**Expected CLI interaction:**
 
-Output structure identical to current YAML-based output
-
---skip-bedrockÂ mode works without AWS (DB is always available)
-
-No changes required toÂ compare.pyÂ orÂ generate_report.py
-
-Existing test suite passes without modification
-
-Phase 3 â€” Universal Document Parser (Step 0)
-
-Duration:Â 3â€“4 days
-Goal:Â Multi-format input parser producing consistent usage signals
-LLM involved:Â Yes â€” for unstructured formats only
-Dependencies:Â Phase 1
-
-DeliverableDescription
-
-
-
-scripts/platform_parity_parse_discovery.py
-
-Universal parser
-
-metadata/platform_parity_parse_discovery.txt
-
-Script descriptor
-
-Acceptance criteria:
-
-CSV input produces identical output to v2.0 parser
-
-JSON input parsed deterministically without LLM
-
-Excel input parsed deterministically without LLM
-
-PDF input extracts meaningful signals via LangChain + LLM
-
-Plain text input extracts meaningful signals via LangChain + LLM
-
-All output signals matched againstÂ parity.discovery_mappingÂ via DB
-
-Unrecognized signals collected and passed to Step 0.5
-
-Platform detection works for all supported formats
-
---skip-bedrockÂ bypasses LLM path; processes structured formats only
-
-RaisesÂ RuntimeErrorÂ (notÂ sys.exit) on all failure conditions
-
-Phase 4 â€” KB Updater + Live API Doc Sync (Step 0.5)
-
-Duration:Â 3â€“4 days
-Goal:Â Classify unknowns + fetch live API docs + keep KB current
-LLM involved:Â Yes
-Dependencies:Â Phases 1, 3
-
-DeliverableDescription
-
-
-
-scripts/platform_parity_kb_updater.py
-
-KB updater with API doc sync
-
-metadata/platform_parity_kb_updater.txt
-
-Script descriptor
-
-Acceptance criteria:
-
-Fetches API docs for all capabilities in current run scope
-
-Correctly detects changed docs via SHA-256 hash comparison
-
-UpdatesÂ parity.api_doc_cacheÂ on every fetch
-
-LLM proposes specific field updates â€” not vague summaries
-
-HIGH confidence updates auto-written toÂ parity.platform_capabilities
-
-MEDIUM/LOW inserts toÂ parity.kb_update_proposalsÂ with statusÂ pending
-
-All activity logged toÂ parity.kb_update_log
-
-Graceful fallback when doc URL is unreachable (uses cached version)
-
-Never writes toÂ parity.capability_taxonomyÂ orÂ parity.known_gaps
-
-No-ops cleanly when all docs are fresh and no unrecognized signals
-
---skip-bedrockÂ skips this step entirely
-
-Phase 5 â€” Enhance Compare Script
-
-Duration:Â 1â€“2 days
-Goal:Â Apply derived policy conditions from Step 0 in gap analysis
-LLM involved:Â No
-Dependencies:Â Phase 3
-
-Acceptance criteria:
-
-All existing gap classification logic completely unchanged
-
-Usage signals attached to gap objects from Step 0
-
-Derived policy conditions evaluated and attached to gap objects
-
-Usage-aware risk weighting applied as per table in Section 8.5
-
-evidence.file_typeÂ populated in every gap object
-
-Phase 6 â€” Enhance Generate Report with LangChain
-
-Duration:Â 2â€“3 days
-Goal:Â DB-backed caching; report stored inÂ parity.parity_reports
-LLM involved:Â Yes
-Dependencies:Â Phase 1, Phase 5
-
-Acceptance criteria:
-
-LangChain chain identical to v2.0 (PromptTemplate + ChatBedrock + Pydantic)
-
-Cache check readsÂ parity.parity_reportsÂ WHERE report_hash matches
-
-Report stored inÂ parity.parity_reportsÂ after generation
-
-kb_doc_versionsÂ snapshot stored with every report
-
---skip-bedrockÂ bypasses LangChain; deterministic template used
-
-All 5 sections enforced by PydanticOutputParser
-
-Phase 7 â€” Export Update
-
-Duration:Â 0.5 days
-Goal:Â Export to EFS + store in DB
-LLM involved:Â No
-Dependencies:Â Phase 6
-
-Acceptance criteria:
-
-.mdÂ andÂ .jsonÂ still written to EFS (unchanged)
-
-Report record written toÂ parity.parity_reports
-
-kb_doc_versionsÂ included in stored record
-
-Phase 8 â€” CLI, Workflow, Test Runner
-
-Duration:Â 1â€“2 days
-Goal:Â Wire all phases together; update CLI and test runner
-Dependencies:Â All previous phases
-
-DeliverableChange
-
-
-
-platform_parity_run.py
-
---inputÂ accepts any file path
-
-workflow/platform_parity_workflow.json
-
-DB params added; Steps 0 and 0.5 added
-
-test_bedrock_e2e.py
-
---inputÂ accepts any file; DB test mode
-
-Expected CLI interaction:
-
-text
-
+```text
 $ python platform_parity_run.py --input discovery_report.pdf
 
 Reading input file: discovery_report.pdf
@@ -1666,109 +1329,45 @@ Analyzing document...
 
 Enter target platform (github / azure_devops / bitbucket): github
 
-Checking KB freshness for GitLab â†’ GitHub...
+Checking KB freshness for GitLab → GitHub...
   review.draft_pr        : KB current (doc unchanged)
-  service_desk_enabled   : KB updated (doc changed â€” HIGH confidence)
+  service_desk_enabled   : KB updated (doc changed — HIGH confidence)
   review.approval_rules  : Update staged for review (MEDIUM confidence)
 
-Starting parity analysis: GitLab â†’ GitHub (243 repositories)
+Starting parity analysis: GitLab → GitHub (243 repositories)
 Report written to: test_output/gitlab_to_github_a3f9c1.md
 Report stored in: parity.parity_reports (id: uuid-...)
+```
 
-Acceptance criteria:
+**Acceptance criteria:**
 
---inputÂ accepts CSV, JSON, Excel, PDF, text files
+- **`--input`** accepts CSV, JSON, Excel, PDF, text files
+- **`--skip-bedrock`** works without AWS credentials
+- Matrix runner **`run_parity_matrix.py`** continues to work (input optional)
+- Existing **`--source`** / **`--target`** arguments still work for direct invocation
 
---skip-bedrockÂ works without AWS credentials
-
-Matrix runnerÂ run_parity_matrix.pyÂ continues to work (input optional)
-
-ExistingÂ --sourceÂ /Â --targetÂ arguments still work for direct invocation
+---
 
 ## 12. Technology Stack
 
-ComponentTechnologyRationale
+| **Component** | **Technology** | **Rationale** |
+| -------------------------------- | -------------------------------------------- | -------------------------------------------------- |
+| Orchestration | Temporal Workflow | Existing — unchanged |
+| Structured parsing | Python **`csv`**, **`json`**, **`openpyxl`** | Deterministic, no LLM cost for known formats |
+| Unstructured parsing | LangChain Document Loaders | Handles PDF, text, unknown formats uniformly |
+| Signal → capability matching | pgvector similarity search | Semantic matching without exact keywords |
+| KB storage | PostgreSQL + pgvector | Queryable, versionable, auditable, team-accessible |
+| API doc fetching | LangChain **`WebBaseLoader`** | Standardized web content extraction |
+| LLM access | AWS Bedrock Claude 3 Sonnet | Enterprise-grade, stays within AWS boundary |
+| Embeddings | AWS Bedrock Titan Embeddings | Same AWS boundary, no external service |
+| LLM orchestration | LangChain | Chains, structured output, retry, document loaders |
+| Output enforcement | Pydantic **`BaseModel`** | Structure guaranteed on every LLM response |
+| Report caching | **`parity.parity_reports`** DB table | Replaces file-based SHA-256 cache |
+| Doc change detection | SHA-256 + **`parity.api_doc_cache`** | Efficient, deterministic, no LLM needed |
 
+### Python Dependencies
 
-
-
-
-Orchestration
-
-Temporal Workflow
-
-Existing â€” unchanged
-
-Structured parsing
-
-PythonÂ csv,Â json,Â openpyxl
-
-Deterministic, no LLM cost for known formats
-
-Unstructured parsing
-
-LangChain Document Loaders
-
-Handles PDF, text, unknown formats uniformly
-
-Signal â†’ capability matching
-
-pgvector similarity search
-
-Semantic matching without exact keywords
-
-KB storage
-
-PostgreSQL + pgvector
-
-Queryable, versionable, auditable, team-accessible
-
-API doc fetching
-
-LangChainÂ WebBaseLoader
-
-Standardized web content extraction
-
-LLM access
-
-AWS Bedrock Claude 3 Sonnet
-
-Enterprise-grade, stays within AWS boundary
-
-Embeddings
-
-AWS Bedrock Titan Embeddings
-
-Same AWS boundary, no external service
-
-LLM orchestration
-
-LangChain
-
-Chains, structured output, retry, document loaders
-
-Output enforcement
-
-PydanticÂ BaseModel
-
-Structure guaranteed on every LLM response
-
-Report caching
-
-parity.parity_reportsÂ DB table
-
-Replaces file-based SHA-256 cache
-
-Doc change detection
-
-SHA-256 +Â parity.api_doc_cache
-
-Efficient, deterministic, no LLM needed
-
-Python Dependencies
-
-text
-
+```text
 # Carried forward from v2.0
 langchain>=0.2
 langchain-aws
@@ -1782,135 +1381,52 @@ pgvector                # Python pgvector client
 openpyxl                # Excel file support
 pypdf                   # PDF text extraction
 unstructured            # Generic unstructured file parsing
+```
 
-No FAISS. No Chroma. No self-managed vector store.
-pgvector runs inside the existing PostgreSQL instance.
-No additional infrastructure required.
-When the KB grows to 1,000+ capabilities, AWS Bedrock Knowledge Bases
-is the recommended managed RAG upgrade path â€” not a self-hosted store.
+***No FAISS. No Chroma. No self-managed vector store.***
+***pgvector runs inside the existing PostgreSQL instance.***
+***No additional infrastructure required.***
+***When the KB grows to 1,000+ capabilities, AWS Bedrock Knowledge Bases***
+***is the recommended managed RAG upgrade path — not a self-hosted store.***
+
+---
 
 ## 13. Risks and Mitigations
 
-RiskLikelihoodImpactMitigation
+| **Risk** | **Likelihood** | **Impact** | **Mitigation** |
+| -------------------------------------------------- | ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| LLM misinterprets unstructured input document | Medium | High | Structured formats always take deterministic path; LLM path outputs confidence score; low confidence signals flagged for review |
+| Live API doc fetch fails (network / rate limit) | Medium | Medium | Cached version used as fallback; retry with exponential backoff; failure logged, pipeline continues |
+| pgvector similarity returns wrong capability match | Low | Medium | Similarity threshold enforced; matches below threshold go to human review staging; exact match tried first |
+| DB migration corrupts existing KB data | Low | High | YAML files archived not deleted; migration is additive only; rollback script provided |
+| API doc content too large for LLM context window | Medium | Medium | **`RecursiveCharacterTextSplitter`** chunks docs; only relevant sections sent to LLM |
+| KB auto-update introduces incorrect platform data | Low | High | HIGH confidence threshold only; all writes logged; no auto-deletes ever; human review queue for MEDIUM/LOW |
+| Bedrock outage blocks report generation | Low | Medium | Compare step output (structured JSON) always available; report can be regenerated later |
+| pgvector extension not available on DB instance | Low | High | Verify extension in Phase 1 acceptance criteria; document installation steps in runbook |
 
-
-
-
-
-
-
-LLM misinterprets unstructured input document
-
-Medium
-
-High
-
-Structured formats always take deterministic path; LLM path outputs confidence score; low confidence signals flagged for review
-
-Live API doc fetch fails (network / rate limit)
-
-Medium
-
-Medium
-
-Cached version used as fallback; retry with exponential backoff; failure logged, pipeline continues
-
-pgvector similarity returns wrong capability match
-
-Low
-
-Medium
-
-Similarity threshold enforced; matches below threshold go to human review staging; exact match tried first
-
-DB migration corrupts existing KB data
-
-Low
-
-High
-
-YAML files archived not deleted; migration is additive only; rollback script provided
-
-API doc content too large for LLM context window
-
-Medium
-
-Medium
-
-RecursiveCharacterTextSplitterÂ chunks docs; only relevant sections sent to LLM
-
-KB auto-update introduces incorrect platform data
-
-Low
-
-High
-
-HIGH confidence threshold only; all writes logged; no auto-deletes ever; human review queue for MEDIUM/LOW
-
-Bedrock outage blocks report generation
-
-Low
-
-Medium
-
-Compare step output (structured JSON) always available; report can be regenerated later
-
-pgvector extension not available on DB instance
-
-Low
-
-High
-
-Verify extension in Phase 1 acceptance criteria; document installation steps in runbook
+---
 
 ## 14. Success Metrics
 
-MetricTarget
+| **Metric** | **Target** |
+| ---------------------------------- | ------------------------------------------------------------------------------------ |
+| Input format support | CSV, JSON, Excel, PDF, plain text all produce valid usage signals |
+| KB freshness | API docs checked on every run; staleness detected within 24 hours of platform change |
+| Semantic signal matching precision | ≥ 90% of unstructured signals correctly matched to capability IDs |
+| DB query performance | KB load from DB completes in under 2 seconds |
+| Auto-update precision | Zero incorrect HIGH-confidence auto-writes (audited over first 20 production runs) |
+| Report generation time | Under 45 seconds end-to-end including API doc fetch |
+| Skip-bedrock CI mode | Passes in under 10 seconds with no AWS credentials |
+| False negative rate | Zero missed blockers for capabilities in KB with HIGH confidence |
+| Audit traceability | Every KB update links to a specific source doc URL and execution ID |
 
-
-
-Input format support
-
-CSV, JSON, Excel, PDF, plain text all produce valid usage signals
-
-KB freshness
-
-API docs checked on every run; staleness detected within 24 hours of platform change
-
-Semantic signal matching precision
-
-â‰¥ 90% of unstructured signals correctly matched to capability IDs
-
-DB query performance
-
-KB load from DB completes in under 2 seconds
-
-Auto-update precision
-
-Zero incorrect HIGH-confidence auto-writes (audited over first 20 production runs)
-
-Report generation time
-
-Under 45 seconds end-to-end including API doc fetch
-
-Skip-bedrock CI mode
-
-Passes in under 10 seconds with no AWS credentials
-
-False negative rate
-
-Zero missed blockers for capabilities in KB with HIGH confidence
-
-Audit traceability
-
-Every KB update links to a specific source doc URL and execution ID
+---
 
 ## 15. Future Evolution Path
 
-mermaid
-
+```mermaid
 flowchart LR
-    subgraph P1["v3.0 â€” Now"]
+    subgraph P1["v3.0 — Now"]
         A1[PostgreSQL + pgvector KB]
         A2[Universal input parser]
         A3[Live API doc sync]
@@ -1918,14 +1434,14 @@ flowchart LR
         A5[Bedrock Narrator\nvia LangChain]
     end
 
-    subgraph P2["v4.0 â€” KB Growth"]
+    subgraph P2["v4.0 — KB Growth"]
         B1[1000+ capabilities\n20+ platforms]
         B2[Bedrock Knowledge Base\nManaged RAG]
         B3[Deterministic Engine\nunchanged]
         B4[Bedrock Narrator\nunchanged]
     end
 
-    subgraph P3["v5.0 â€” Migration Intelligence"]
+    subgraph P3["v5.0 — Migration Intelligence"]
         C1[Historical migration\noutcome data]
         C2[Predictive risk scoring\nfrom past migrations]
         C3[Automated remediation\nplaybook generation]
@@ -1934,188 +1450,50 @@ flowchart LR
 
     P1 -->|"KB grows beyond ~200 capabilities"| P2
     P2 -->|"Historical outcome data available"| P3
+```
 
-When to upgrade to Bedrock Knowledge Bases:
+**When to upgrade to Bedrock Knowledge Bases:**
+
 When the KB grows beyond approximately 200 capabilities across 8+
 platforms, or when the API doc corpus becomes too large to fit in
 a single LLM context window for comparison, AWS Bedrock Knowledge Bases
 is the recommended managed RAG path. It handles ingestion, chunking,
-embedding, and retrieval within the AWS boundary â€” no self-managed
+embedding, and retrieval within the AWS boundary — no self-managed
 vector infrastructure required.
 
-16. Appendix â€” Before and After Comparison
-
-Architecture State
-
-Dimensionv1.0 Originalv2.0 CSV-Enrichedv3.0 Universal + DB
-
-
-
-
-
-
-
-Input format
-
-Implicit (no file input)
-
-CSV only
-
-Any file format
-
-KB storage
-
-Local YAML files
-
-Local YAML files
-
-PostgreSQL + pgvector
-
-KB updates
-
-Manual YAML edits
-
-Auto from CSV columns
-
-Auto from live API docs
-
-Platform detection
-
-Manual user input
-
-Score-based from CSV
-
-Score-based + LLM for unstructured
-
-Signal â†’ capability
-
-N/A
-
-Exact column name
-
-Vector similarity + exact
-
-LLM touchpoints
-
-1 (report)
-
-2 (kb_updater + report)
-
-2 (kb_updater + report)
-
-API doc freshness
-
-Never checked
-
-Never checked
-
-Checked every run
-
-Report caching
-
-File-based SHA-256
-
-File-based SHA-256
-
-DB-backed
-
-Audit trail
-
-None
-
-YAML log files
-
-Full DB audit tables
-
-Team access to KB
-
-âŒ Local files only
-
-âŒ Local files only
-
-âœ… Shared DB
-
-Skip-bedrock support
-
-âœ…
-
-âœ…
-
-âœ…
-
-Report Quality
-
-Dimensionv1.0v2.0v3.0
-
-
-
-
-
-
-
-Gap classification
-
-âœ… Correct
-
-âœ… Correct
-
-âœ… Correct (unchanged)
-
-Repository impact
-
-âŒ Not shown
-
-âœ… From CSV signals
-
-âœ… From any input format
-
-Evidence traceability
-
-âŒ None
-
-âœ… CSV column chain
-
-âœ… Signal + file type chain
-
-KB freshness disclosure
-
-âŒ Not disclosed
-
-âŒ Not disclosed
-
-âœ… API doc fetch date shown
-
-Platform detection
-
-âŒ Manual
-
-âœ… Score-based
-
-âœ… Score-based + LLM
-
-Input flexibility
-
-âŒ None
-
-âŒ CSV only
-
-âœ… Any format
-
-KB evolution
-
-âŒ Manual only
-
-âš ï¸ Semi-auto (CSV signals)
-
-âœ… Auto from live API docs
-
-Report structure enforcement
-
-âš ï¸ Post-hoc
-
-âœ… PydanticOutputParser
-
-âœ… PydanticOutputParser
-
-End of Implementation Plan â€” Platform Parity Module v3.0
-
+---
+
+## 16. Appendix — Before and After Comparison
+
+### Architecture State
+
+| **Dimension** | **v1.0 Original** | **v2.0 CSV-Enriched** | **v3.0 Universal + DB** |
+| -------------------------------------------------------------- | ------------------------ | ------------------------ | ---------------------------------- |
+| Input format | Implicit (no file input) | CSV only | Any file format |
+| KB storage | Local YAML files | Local YAML files | PostgreSQL + pgvector |
+| KB updates | Manual YAML edits | Auto from CSV columns | Auto from live API docs |
+| Platform detection | Manual user input | Score-based from CSV | Score-based + LLM for unstructured |
+| Signal → capability | N/A | Exact column name | Vector similarity + exact |
+| LLM touchpoints | 1 (report) | 2 (kb_updater + report) | 2 (kb_updater + report) |
+| API doc freshness | Never checked | Never checked | Checked every run |
+| Report caching | File-based SHA-256 | File-based SHA-256 | DB-backed |
+| Audit trail | None | YAML log files | Full DB audit tables |
+| Team access to KB | ❌ Local files only | ❌ Local files only | ✅ Shared DB |
+| Skip-bedrock support | ✅ | ✅ | ✅ |
+
+### Report Quality
+
+| **Dimension** | **v1.0** | **v2.0** | **v3.0** |
+| ---------------------------- | --------------- | -------------------------- | -------------------------- |
+| Gap classification | ✅ Correct | ✅ Correct | ✅ Correct (unchanged) |
+| Repository impact | ❌ Not shown | ✅ From CSV signals | ✅ From any input format |
+| Evidence traceability | ❌ None | ✅ CSV column chain | ✅ Signal + file type chain |
+| KB freshness disclosure | ❌ Not disclosed | ❌ Not disclosed | ✅ API doc fetch date shown |
+| Platform detection | ❌ Manual | ✅ Score-based | ✅ Score-based + LLM |
+| Input flexibility | ❌ None | ❌ CSV only | ✅ Any format |
+| KB evolution | ❌ Manual only | ⚠️ Semi-auto (CSV signals) | ✅ Auto from live API docs |
+| Report structure enforcement | ⚠️ Post-hoc | ✅ PydanticOutputParser | ✅ PydanticOutputParser |
+
+---
+
+*End of Implementation Plan — Platform Parity Module v3.0*
