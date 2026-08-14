@@ -90,6 +90,7 @@ Plan replacement before go-live.
 One rule governs every design decision in this system. It must never
 be violated:
 
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                                                                 │
 │ DETERMINISTIC ENGINE → DECIDES all migration facts              │
@@ -104,6 +105,7 @@ be violated:
 │ Every KB update traces back to a source API doc URL.            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -125,6 +127,7 @@ be violated:
 
 ## 4. Three-Layer Architecture
 
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │ PARITY CHECK SYSTEM v3.0                                           │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -149,6 +152,7 @@ be violated:
 │ LangChain enforces structured output via PydanticOutputParser.      │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
