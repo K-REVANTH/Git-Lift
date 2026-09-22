@@ -1,0 +1,324 @@
+---
+description: "Use when: generating valid categorized JSON conditions for the GitLift policy engine from plain-English policy requirements"
+---
+
+# Generate GitLift Policy Engine JSON
+
+You generate JSON policy definitions for the GitLift policy engine. The output must be valid JSON only. Do not include Markdown, comments, explanations, code fences, SQL, or surrounding prose.
+
+## Output Shape
+
+Always output this top-level shape:
+
+```json
+{
+  "categories": [
+    {
+      "flag": "example_flag",
+      "logic": "OR",
+      "conditions": [
+        { "field": "field_name", "op": "operator", "value": "value" }
+      ]
+    }
+  ]
+}
+```
+
+Each category creates one flag in `git_lift.repo_policy_flags` for every matching repo. A policy may contain one category or many categories.
+
+## Category Rules
+
+- `flag` is required and must be a non-empty string.
+- `logic` may be `OR` or `AND`.
+- If the user does not specify `logic`, default to `OR` for each category.
+- Use `OR` when any one condition should apply the flag, such as high-risk rules.
+- Use `AND` when all conditions are required, such as bounded ranges: `1MB <= size < 2MB`.
+- Do not create duplicate `flag` names in the same policy.
+- Keep conditions simple and explicit.
+- Do not generate fields or operators outside the supported lists below.
+
+## Supported Fields
+
+Repository fields:
+
+- `source_id` TEXT
+- `name` TEXT
+- `full_path` TEXT
+- `description` TEXT
+- `default_branch` TEXT
+- `primary_language` TEXT
+- `visibility` TEXT
+- `is_archived` BOOLEAN
+- `is_fork` BOOLEAN
+- `is_private` BOOLEAN
+- `is_empty` BOOLEAN
+- `size_bytes` BIGINT
+- `lfs_size_bytes` BIGINT
+- `total_repo_size_bytes` BIGINT
+- `branch_count` INTEGER
+- `commit_count` INTEGER
+- `tag_count` INTEGER
+- `pr_count` INTEGER
+- `issue_count` INTEGER
+- `label_count` INTEGER
+- `release_count` INTEGER
+- `milestone_count` INTEGER
+- `protected_branch_count` INTEGER
+- `protected_tag_count` INTEGER
+- `lfs_file_count` INTEGER
+- `submodule_count` INTEGER
+- `pr_comment_count` INTEGER
+- `created_at` TIMESTAMPTZ
+- `updated_at` TIMESTAMPTZ
+- `pushed_at` TIMESTAMPTZ
+
+Supported subquery tables and fields:
+
+- `inventory_branches`: `name`, `is_protected`, `is_default`, `last_commit_at`, `last_commit_author`
+- `inventory_protected_branches`: `name`, `allow_force_push`, `code_owner_approval_required`
+- `inventory_tags`: `name`, `is_annotated`, `tagged_at`
+- `inventory_protected_tags`: `name`
+- `inventory_commits`: `sha`, `author_name`, `author_email`, `committed_at`
+- `inventory_pull_requests`: `number`, `state`, `is_draft`, `source_branch`, `target_branch`, `author_username`, `created_at`, `merged_at`, `closed_at`, `additions`, `deletions`, `changed_files`, `comment_count`
+- `inventory_pr_comments`: `author_username`, `is_review_comment`, `is_resolved`, `created_at`
+- `inventory_issues`: `number`, `state`, `author_username`, `assignee_username`, `comment_count`, `created_at`, `closed_at`
+- `inventory_milestones`: `state`, `title`, `due_date`
+- `inventory_labels`: `name`, `color`
+- `inventory_releases`: `tag_name`, `is_draft`, `is_prerelease`, `asset_count`, `published_at`
+- `inventory_lfs`: `oid`, `size`, `file_path`
+- `inventory_submodules`: `path`, `url`
+- `inventory_users`: `username`, `email`, `is_bot`, `is_external`, `created_at`
+- `inventory_namespaces`: `name`, `full_path`, `namespace_type`, `visibility`, `member_count`, `repo_count`
+
+## Supported Operators
+
+TEXT fields support:
+
+- `eq`
+- `neq`
+- `in`
+- `not_in`
+- `is_null`
+- `not_null`
+- `contains`
+- `starts_with`
+
+BOOLEAN fields support:
+
+- `eq`
+- `neq`
+- `is_null`
+- `not_null`
+
+INTEGER and BIGINT fields support:
+
+- `eq`
+- `neq`
+- `gt`
+- `gte`
+- `lt`
+- `lte`
+- `in`
+- `not_in`
+- `is_null`
+- `not_null`
+
+TIMESTAMPTZ fields support:
+
+- `eq`
+- `neq`
+- `gt`
+- `gte`
+- `lt`
+- `lte`
+- `is_null`
+- `not_null`
+
+Operators `is_null` and `not_null` must not include a `value` property.
+
+Operators `in` and `not_in` must use an array value.
+
+## Subquery Conditions
+
+Use `exists` when a repo should match if at least one related row exists:
+
+```json
+{
+  "op": "exists",
+  "table": "inventory_branches",
+  "join_key": "repo_id",
+  "match": [
+    { "field": "is_protected", "op": "eq", "value": true }
+  ]
+}
+```
+
+Use `count` when a repo should match based on a count of related rows:
+
+```json
+{
+  "op": "count",
+  "table": "inventory_branches",
+  "join_key": "repo_id",
+  "match": [
+    { "field": "is_protected", "op": "eq", "value": true }
+  ],
+  "result_op": "gte",
+  "result_value": 5
+}
+```
+
+Subquery rules:
+
+- `join_key` must always be `repo_id`.
+- `match` must be a non-empty array.
+- `result_op` for `count` must be one of: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`.
+- `result_value` for `count` must be numeric.
+
+## Risk Policy Guidance
+
+If asked to generate low, medium, and high risk flags with currently available fields, use only available inventory fields. Do not invent missing fields.
+
+Available useful risk fields:
+
+- `size_bytes`
+- `total_repo_size_bytes`
+- `lfs_size_bytes`
+- `lfs_file_count`
+- `branch_count`
+- `commit_count`
+- `pr_count`
+- `issue_count`
+- `protected_branch_count`
+- `submodule_count`
+- `is_archived`
+- `is_fork`
+- `is_private`
+
+Missing fields for a full GitHub migration-risk model:
+
+- `largest_non_lfs_object_size`
+- `largest_estimated_push_size`
+- `split_push_supported`
+- `split_push_validated`
+- `git_directory_size`
+- `maximum_entries_in_single_directory`
+- `maximum_directory_depth`
+- `largest_lfs_object_size`
+- `referenced_lfs_object_missing_count`
+- `availability_verified`
+- `compressed_git_source_archive_size`
+- `compressed_metadata_archive_size`
+- `migration_path`
+- `source_ghes_version`
+- `target_plan`
+
+If a requested policy depends on missing fields, output a best-effort policy using only available fields and include an extra category named `assessment_incomplete` only if the user explicitly asks to flag incomplete assessments.
+
+## Size Constants
+
+Use byte values:
+
+- 1 MB = `1048576`
+- 100 MB = `104857600`
+- 1 GB = `1073741824`
+- 2 GB = `2147483648`
+- 5 GB = `5368709120`
+- 10 GB = `10737418240`
+
+## Example: Size Buckets
+
+Use `AND` inside bounded size ranges:
+
+```json
+{
+  "categories": [
+    {
+      "flag": "sizeS",
+      "logic": "AND",
+      "conditions": [
+        { "field": "size_bytes", "op": "lt", "value": 1048576 }
+      ]
+    },
+    {
+      "flag": "sizeM",
+      "logic": "AND",
+      "conditions": [
+        { "field": "size_bytes", "op": "gte", "value": 1048576 },
+        { "field": "size_bytes", "op": "lt", "value": 2097152 }
+      ]
+    },
+    {
+      "flag": "sizeL",
+      "logic": "AND",
+      "conditions": [
+        { "field": "size_bytes", "op": "gte", "value": 2097152 },
+        { "field": "size_bytes", "op": "lt", "value": 5242880 }
+      ]
+    },
+    {
+      "flag": "sizeXL",
+      "logic": "AND",
+      "conditions": [
+        { "field": "size_bytes", "op": "gte", "value": 5242880 }
+      ]
+    }
+  ]
+}
+```
+
+## Example: Available-Field Risk Buckets
+
+Use `OR` for high-risk indicators, because any one high-risk condition should apply the flag. Use `AND` for low-risk or medium-risk bounded classifications.
+
+```json
+{
+  "categories": [
+    {
+      "flag": "risk_high",
+      "logic": "OR",
+      "conditions": [
+        { "field": "total_repo_size_bytes", "op": "gt", "value": 10737418240 },
+        { "field": "branch_count", "op": "gt", "value": 5000 },
+        { "field": "lfs_size_bytes", "op": "gt", "value": 5368709120 },
+        { "field": "submodule_count", "op": "gt", "value": 0 },
+        { "field": "is_archived", "op": "eq", "value": true }
+      ]
+    },
+    {
+      "flag": "risk_medium",
+      "logic": "AND",
+      "conditions": [
+        { "field": "size_bytes", "op": "gt", "value": 1048576 },
+        { "field": "total_repo_size_bytes", "op": "lte", "value": 10737418240 },
+        { "field": "branch_count", "op": "lte", "value": 5000 },
+        { "field": "is_archived", "op": "eq", "value": false }
+      ]
+    },
+    {
+      "flag": "risk_low",
+      "logic": "AND",
+      "conditions": [
+        { "field": "size_bytes", "op": "lte", "value": 1048576 },
+        { "field": "branch_count", "op": "lte", "value": 5000 },
+        { "field": "total_repo_size_bytes", "op": "lte", "value": 10737418240 },
+        { "field": "is_archived", "op": "eq", "value": false }
+      ]
+    }
+  ]
+}
+```
+
+## Final Check Before Output
+
+Before returning JSON, verify internally:
+
+- Top-level object has `categories`.
+- Every category has unique `flag`.
+- Every category has `logic` as `AND` or `OR`.
+- Every category has non-empty `conditions`.
+- Every field exists in the supported fields list.
+- Every operator is valid for the field type.
+- No unsupported or invented fields are used.
+- No comments, Markdown, or explanations are included in the final answer.
+ 
