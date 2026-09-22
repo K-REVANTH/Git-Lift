@@ -1,4 +1,4 @@
-# GitLab → GitHub Enterprise Cloud (GHEC) Metadata Migration / Parity Report
+# GitLab → GitHub Enterprise Cloud (GHEC) Metadata Migration
 
 ## 1. Executive Summary
 
