@@ -233,44 +233,75 @@ The following capabilities have no meaningful native GHEC equivalent, or the ori
 ### 5.1 Conditions Applicable to Seamless Migrations
 
 1. **Git Data Fidelity:** All items classified as seamless that rely on Git-native data (commits, branches, tags, LFS objects, `.gitattributes`, `.gitignore`, `.gitmodules`, CODEOWNERS, signed commits) assume migration via `git clone --mirror` followed by `git push --mirror` (or equivalent bare-repository transfer). This preserves commit SHAs, author/committer metadata, timestamps, and ref structure.
+
 2. **LFS Storage Quotas:** LFS object migration is classified as seamless because the mechanism is direct (`git lfs fetch --all` / `git lfs push --all`). However, GHEC enforces LFS storage and bandwidth quotas. Each GHEC account includes 1 GB of LFS storage and 1 GB/month of bandwidth. Additional storage packs can be purchased ($5/month per 50 GB data pack). Organizations with large LFS usage must pre-provision adequate storage.
+
 3. **Deploy Key Uniqueness:** GHEC enforces global uniqueness of deploy key public keys. A single public key cannot be added as a deploy key to multiple repositories. If GitLab uses shared deploy keys across projects, distinct key pairs must be generated per GHEC repository, or a machine user account must be used.
+
 4. **Emoji Reaction Vocabulary:** GHEC supports only 8 reaction types. GitLab supports a broader emoji set for award reactions. Reactions not in GHEC's supported set cannot be preserved natively. If full emoji fidelity is required, this item should be reclassified to 🟡.
+
 5. **CODEOWNERS Adjustments:** While the CODEOWNERS file migrates as repository content, identity references (`@user`, `@group`) must be updated to GHEC equivalents (`@github-user`, `@org/team`). Section headers (`[Section name]`) used in GitLab CODEOWNERS are not supported by GHEC and will be ignored. These are content-level edits, not platform metadata transformations.
+
 6. **Release Date Backdating:** Preserving original release creation dates on GHEC requires creating releases as drafts (which allows setting `created_at` via API), then publishing them. Direct creation of published releases does not allow backdating `created_at`.
+
 7. **Wiki and Issue Toggles:** GHEC does not support disabling pull requests. If GitLab had merge requests disabled, this state cannot be replicated on GHEC. This is noted but does not constitute a meaningful migration blocker.
+
 8. **Submodule URL Rewriting:** `.gitmodules` files that reference GitLab repository URLs must be updated post-migration to point to the corresponding GHEC repository URLs. This is a content edit performed after the initial Git push, not a platform metadata transformation.
+
 9. **User Identity Mapping:** Seamless items involving user-visible data (commits, tags) preserve the original Git author/committer email. GitHub links these to user profiles only if the email matches a verified email on a GitHub account. Proper user identity mapping and email verification is a prerequisite for attribution to work correctly on GHEC.
+
 10. **GHEC Tier Assumption:** All analysis assumes the target is GitHub Enterprise Cloud (GHEC) with an active Enterprise account. Features requiring GitHub Advanced Security (GHAS) are noted where applicable. GHAS must be purchased and enabled separately for private/internal repositories (it is free for public repositories).
+
 11. **API Rate Limits:** All API-based migration operations are subject to GHEC API rate limits (5,000 requests/hour for authenticated users, higher for GitHub App installations). Large-scale migrations must implement rate-limit handling, pagination, and retry logic.
+
 12. **Repository Size Limits:** GHEC recommends repositories be under 5 GB (with a hard limit of approximately 100 GB, though push limits apply at ~2 GB per push). GitLab has configurable repository size limits. Very large repositories may need special handling (e.g., shallow clones, history truncation, or LFS migration for large binary files).
 
 ### 5.2 Conditions Applicable to Behavioral Differences
 
 1. **User Identity Mapping is Critical:** Approximately 30+ items in this section depend on mapping GitLab user identities to GHEC user identities. This includes issue authors, MR/PR authors, commenters, assignees, reviewers, approvers, and commit attributors. A comprehensive identity mapping table (`gitlab_username` → `ghec_username`) is a prerequisite. Users who don't exist on GHEC cannot be assigned, and their contributions will either be attributed to a migration bot or lost.
+
 2. **CI/CD Rewrite is the Largest Single Effort:** Items 56–74 collectively represent the most significant migration effort. GitLab CI/CD (`.gitlab-ci.yml`) and GitHub Actions (`.github/workflows/*.yml`) are fundamentally different systems. There is no automated 1:1 conversion. Every pipeline must be analyzed, redesigned, and rewritten. This affects pipeline configuration, variables, secrets, runners, artifacts, caching, services, schedules, triggers, OIDC, and all pipeline-related automation.
+
 3. **GitHub Advanced Security (GHAS) Licensing:** Security items (88–96) require GHAS, which is an additional paid feature on GHEC for private and internal repositories. GHAS is free for public repositories. Without GHAS, CodeQL, secret scanning for private repos, push protection, dependency review, and custom secret patterns are not available.
+
 4. **Group-to-Organization Structural Mapping Must Be Planned First:** Items 7, 8, 9, 37, 44, 53, 58, 63, and 103 all depend on the group→org/team mapping strategy. This decision has cascading effects on all group-scoped resources. The mapping strategy should be finalized before beginning migration of any group-scoped metadata.
+
 5. **Package Registry Gaps:** Items 78–82 identify that GitLab's PyPI, Conan, Composer, and Generic package registries have no native GHEC equivalent. Organizations using these registries need alternative hosting solutions. This may require infrastructure changes beyond the SCM platform.
+
 6. **API-Based Timestamp Attribution:** Preserving original creation timestamps for issues, PRs, and comments on GHEC typically requires either: (a) using import-specific API behavior (if available and not tool-dependent), or (b) including original timestamps in the body/description text as attribution metadata (e.g., "*Originally created on 2023-01-15 by @user*"). The standard GHEC API for creating issues/PRs uses the current timestamp as `created_at`.
+
 7. **Webhook Payload Breaking Changes:** Items 52–54 affect all downstream systems consuming webhook events. GitLab and GHEC webhook payloads have completely different JSON schemas, event names, and headers. Every webhook consumer application must be updated to handle GHEC payloads. This is often an underestimated migration effort.
+
 8. **Historical Data Preservation Pattern:** For most collaboration objects (issues, MRs/PRs, comments, reviews), the pattern is: **data content** can be preserved (title, body, comment text), but **system metadata** (original timestamps as API fields, auto-generated timeline events, internal IDs) is partially or fully lost. A common pattern is to embed original metadata as formatted text in the body.
+
 9. **Environment and Secret Scoping Model Change:** GitLab's "protected variable" concept (exposed only on protected branches) maps to GHEC's environment-scoped secrets with deployment branch policies. This requires creating appropriate environments and configuring branch restrictions, which is a design decision beyond simple data copying.
+
 10. **Container Registry URL Updates Are Pervasive:** Item 83 (container registry migration) has cascading effects. Every reference to `registry.gitlab.com` in Dockerfiles, docker-compose files, Kubernetes manifests, Helm charts, CI/CD pipelines, and documentation must be updated to `ghcr.io`. This search-and-replace effort spans the entire codebase and infrastructure configuration.
 
 ### 5.3 Conditions Applicable to Hard Blockers
 
 1. **"Hard Blocker" is Contextual:** Several items in this list (merge trains, group boards, GitLab Pages, commit discussions, snippets) have functional GHEC equivalents that cover the common case (merge queue, GitHub Projects v2, GitHub Pages, commit comments API, Gists). They are classified as blockers only for edge-case scenarios where specific GitLab-unique features do not map. If the migration is willing to accept the GHEC equivalent's model, these items should be treated as 🟡 Migratable with Changes. The classification is intentionally conservative to flag risk.
+
 2. **GitLab Tier Prerequisites:** Many blocker items are GitLab Premium or Ultimate features (epics, iterations, requirements, test cases, multi-project pipelines, multi-rule approvals, roadmaps, insights, value stream analytics, compliance frameworks). If the source GitLab instance is on the Free tier, these items may not exist and can be removed from the blocker list.
+
 3. **Historical Runtime Data Cannot Be Migrated:** Pipeline execution history, job logs, artifacts, deployment history, and vulnerability findings are all runtime data generated by platform execution. GHEC does not accept imports of historical runtime data for these categories. External archival is the only preservation option. This is a fundamental platform constraint, not a metadata migration challenge.
+
 4. **Structural Model Differences Are Not "Fixable":** Epics, scoped labels, requirements, iterations, and multi-rule approvals are absent from GHEC as first-class object types. They can be approximated using issues + labels + Projects (v2) custom fields, but the approximation is always a modeling exercise, not a data migration. Downstream reporting, automation, and workflows that depend on these object types must be redesigned.
+
 5. **Snippet Ownership Model:** GHEC has no enterprise-scoped snippet concept. Gists (the GHEC equivalent) belong to individual users on github.com, not the enterprise. This is a governance concern: enterprise-owned snippets on GitLab cannot be migrated to enterprise-owned assets on GHEC.
+
 6. **Feature Flags, Error Tracking, Incident Management, Service Desk:** These operational features are absent from GHEC. Organizations relying on GitLab for these capabilities must migrate to dedicated third-party services. This may involve significant tooling, workflow, and integration changes beyond SCM migration.
+
 7. **AI Product Boundaries:** GitLab Duo and GitHub Copilot are independent AI products with separate licensing. Migration does not transfer AI configuration, prompts, or usage history. Users must be onboarded to Copilot separately.
+
 8. **CI/CD Job Token Cross-Repository Access:** GitLab's `CI_JOB_TOKEN` with project allowlists (finely controlling which projects can access another project's registries/APIs from CI) has no GHEC equivalent. GHEC pipelines must use PATs, GitHub App tokens, or org-level configuration for cross-repo access, which have different security postures.
+
 9. **Repository Mirroring Absence:** GHEC does not provide native inbound or outbound repository mirroring as a repo setting. All mirroring must be reimplemented via GitHub Actions workflows or third-party tools. Bidirectional mirroring is particularly complex and generally discouraged.
+
 10. **Instance Configuration (Self-Managed GitLab Source):** If migrating from self-managed GitLab, many instance-level settings (LDAP, Kerberos, mail server, feature flags, custom hooks, application settings) have no relevance to GHEC as a hosted platform. These settings do not migrate — they either don't apply, or their intent is achieved through different GHEC mechanisms.
+
 11. **PAT and Secret Regeneration is Mandatory:** No token, secret, or credential migrates from GitLab to GHEC. Every PAT, deploy token, webhook secret, CI/CD secret variable, integration credential, and mirror credential must be regenerated on GHEC and reconfigured in every consuming system. This is one of the largest coordination efforts in the migration.
+
 12. **User Attribution for Blocker Items:** For blocker items that will be recreated using workarounds (e.g., epics as parent issues, scoped labels as flat labels, requirements as issues), original user attribution follows the same challenges as behavioral difference items — original authors' actions can be preserved in text/body but not as native API metadata unless proper user identity mapping is implemented.
 
 ---
