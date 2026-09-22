@@ -1,0 +1,278 @@
+{
+  "categories": [
+    {
+      "flag": "repo_size_exceeds_ghec_recommendation",
+      "logic": "OR",
+      "conditions": [
+        { "field": "total_repo_size_bytes", "op": "gt", "value": 5368709120 }
+      ]
+    },
+    {
+      "flag": "repo_size_exceeds_ghec_hard_limit",
+      "logic": "OR",
+      "conditions": [
+        { "field": "total_repo_size_bytes", "op": "gt", "value": 10737418240 }
+      ]
+    },
+    {
+      "flag": "lfs_storage_exceeds_default_quota",
+      "logic": "OR",
+      "conditions": [
+        { "field": "lfs_size_bytes", "op": "gt", "value": 1073741824 }
+      ]
+    },
+    {
+      "flag": "lfs_large_object_present",
+      "logic": "OR",
+      "conditions": [
+        { "field": "lfs_file_count", "op": "gt", "value": 0 }
+      ]
+    },
+    {
+      "flag": "has_submodules",
+      "logic": "OR",
+      "conditions": [
+        { "field": "submodule_count", "op": "gt", "value": 0 }
+      ]
+    },
+    {
+      "flag": "is_fork_requires_relationship_setup",
+      "logic": "OR",
+      "conditions": [
+        { "field": "is_fork", "op": "eq", "value": true }
+      ]
+    },
+    {
+      "flag": "is_archived_migration_candidate",
+      "logic": "OR",
+      "conditions": [
+        { "field": "is_archived", "op": "eq", "value": true }
+      ]
+    },
+    {
+      "flag": "no_branch_protection_detected",
+      "logic": "AND",
+      "conditions": [
+        { "field": "protected_branch_count", "op": "eq", "value": 0 },
+        { "field": "branch_count", "op": "gt", "value": 0 }
+      ]
+    },
+    {
+      "flag": "high_branch_count_complexity",
+      "logic": "OR",
+      "conditions": [
+        { "field": "branch_count", "op": "gt", "value": 500 }
+      ]
+    },
+    {
+      "flag": "very_high_branch_count_risk",
+      "logic": "OR",
+      "conditions": [
+        { "field": "branch_count", "op": "gt", "value": 5000 }
+      ]
+    },
+    {
+      "flag": "pr_volume_high",
+      "logic": "OR",
+      "conditions": [
+        { "field": "pr_count", "op": "gt", "value": 1000 }
+      ]
+    },
+    {
+      "flag": "issue_volume_high",
+      "logic": "OR",
+      "conditions": [
+        { "field": "issue_count", "op": "gt", "value": 5000 }
+      ]
+    },
+    {
+      "flag": "has_protected_tags",
+      "logic": "OR",
+      "conditions": [
+        { "field": "protected_tag_count", "op": "gt", "value": 0 }
+      ]
+    },
+    {
+      "flag": "stale_repo_no_recent_push",
+      "logic": "AND",
+      "conditions": [
+        { "field": "pushed_at", "op": "lt", "value": "2024-01-01T00:00:00Z" },
+        { "field": "is_archived", "op": "eq", "value": false }
+      ]
+    },
+    {
+      "flag": "private_repo_identity_mapping_required",
+      "logic": "OR",
+      "conditions": [
+        { "field": "is_private", "op": "eq", "value": true }
+      ]
+    },
+    {
+      "flag": "has_open_prs_requiring_migration",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_pull_requests",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "state", "op": "eq", "value": "open" }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "has_draft_prs",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_pull_requests",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "is_draft", "op": "eq", "value": true }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "has_default_branch_protection",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_protected_branches",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "code_owner_approval_required", "op": "eq", "value": true }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "force_push_allowed_on_protected_branch",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_protected_branches",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "allow_force_push", "op": "eq", "value": true }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "has_releases_with_assets",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_releases",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "asset_count", "op": "gt", "value": 0 }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "has_prerelease_releases",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_releases",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "is_prerelease", "op": "eq", "value": true }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "has_milestones",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "count",
+          "table": "inventory_milestones",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "state", "op": "eq", "value": "open" }
+          ],
+          "result_op": "gte",
+          "result_value": 1
+        }
+      ]
+    },
+    {
+      "flag": "has_external_collaborators",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_users",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "is_external", "op": "eq", "value": true }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "has_bot_users",
+      "logic": "OR",
+      "conditions": [
+        {
+          "op": "exists",
+          "table": "inventory_users",
+          "join_key": "repo_id",
+          "match": [
+            { "field": "is_bot", "op": "eq", "value": true }
+          ]
+        }
+      ]
+    },
+    {
+      "flag": "migration_risk_high",
+      "logic": "OR",
+      "conditions": [
+        { "field": "total_repo_size_bytes", "op": "gt", "value": 10737418240 },
+        { "field": "lfs_size_bytes", "op": "gt", "value": 5368709120 },
+        { "field": "branch_count", "op": "gt", "value": 5000 },
+        { "field": "submodule_count", "op": "gt", "value": 10 },
+        { "field": "pr_count", "op": "gt", "value": 10000 },
+        { "field": "issue_count", "op": "gt", "value": 10000 }
+      ]
+    },
+    {
+      "flag": "migration_risk_medium",
+      "logic": "AND",
+      "conditions": [
+        { "field": "total_repo_size_bytes", "op": "gt", "value": 1073741824 },
+        { "field": "total_repo_size_bytes", "op": "lte", "value": 10737418240 },
+        { "field": "branch_count", "op": "lte", "value": 5000 }
+      ]
+    },
+    {
+      "flag": "migration_risk_low",
+      "logic": "AND",
+      "conditions": [
+        { "field": "total_repo_size_bytes", "op": "lte", "value": 1073741824 },
+        { "field": "branch_count", "op": "lte", "value": 500 },
+        { "field": "lfs_file_count", "op": "eq", "value": 0 },
+        { "field": "submodule_count", "op": "eq", "value": 0 },
+        { "field": "is_fork", "op": "eq", "value": false }
+      ]
+    },
+    {
+      "flag": "assessment_incomplete",
+      "logic": "OR",
+      "conditions": [
+        { "field": "total_repo_size_bytes", "op": "gte", "value": 0 }
+      ]
+    }
+  ]
+}
