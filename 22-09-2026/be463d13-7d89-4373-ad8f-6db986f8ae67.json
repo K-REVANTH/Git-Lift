@@ -1,0 +1,937 @@
+{
+  "report_id": "be463d13-7d89-4373-ad8f-6db986f8ae67",
+  "source_platform": "gitlab",
+  "target_platform": "github",
+  "generated_at": "2026-09-22T11:24:46.152979+00:00",
+  "generated_by": "GitLift Platform Parity workflow",
+  "overall_risk": "CRITICAL",
+  "markdown_content": "# GitLab -> GitHub Parity Report\n\n---\n\n## 1. Executive Summary\nThis report assesses migration from **GitLab** to **GitHub**. Overall risk is **CRITICAL** with **42** total gaps.\n\n**Key findings at a glance:**\n\n- Hard Blockers: 10\n- Behavioral Differences: 24\n- Partial Support: 8\n- Seamless Migrations: 39\n\nMigration teams should validate blockers, remediate partial support items, and confirm behavioral differences before execution.\n\n---\n\n## 2. 🔴 Hard Blockers\n### 1. Group-Level Labels (`labels.group_level`)\n**Category:** labels\n\n**Source behavior:** GitLab allows labels to be defined at the group level. Group labels are inherited by all projects within the group and appear alongside project labels.\n\n**Target behavior:** GitHub labels exist only at the repository level. There is no organization-level label that is inherited by all repositories.\n\n**Impact:** HIGH — GitLab group labels must be manually replicated to each GitHub repository.\n\n**Workaround:** Use GitHub's label management API or a GitHub Action to synchronize a canonical set of labels to all repositories in an organization.\n\n**Remediation effort:** LOW\n\n**Data migration consideration:** Group labels must be replicated to every repository before migrating issues that reference them.\n\n---\n\n### 2. Scoped Labels (`labels.scoped`)\n**Category:** labels\n\n**Source behavior:** GitLab scoped labels use the :: separator (e.g., type::bug, type::feature). Within a scope, only one label can be applied at a time — applying a new one removes the existing scoped label.\n\n**Target behavior:** GitHub does not have a native scoped label concept with mutual exclusivity. Labels are flat.\n\n**Impact:** HIGH — GitLab scoped label enforcement semantics are completely lost on migration to GitHub.\n\n**Workaround:** Retain the :: separator in the label name when migrating from GitLab, but mutual-exclusivity enforcement must be implemented via GitHub Actions or external automation.\n\n**Remediation effort:** MEDIUM\n\n**Data migration consideration:** Label names can be migrated as-is. Mutual-exclusivity enforcement must be reimplemented.\n\n---\n\n### 3. Confidential Issues (`pm.confidential_issues`)\n**Category:** project_management\n\n**Source behavior:** GitLab issues can be marked as confidential, hiding them from non-member users while remaining visible to project members with Reporter role or above.\n\n**Target behavior:** GitHub does not support confidential issues. All issues in a repository are visible to all repository collaborators with read access. There is no per-issue visibility control.\n\n**Impact:** HIGH — Confidential issue content will become visible to all repository collaborators after migration.\n\n**Workaround:** Use a separate private repository for sensitive issues, or use GitHub's issue-level locking as a partial substitute. Neither fully replicates GitLab's per-issue confidentiality.\n\n**Remediation effort:** MEDIUM\n\n**Data migration consideration:** Confidential issues MUST be handled before migration to prevent accidental exposure.\n\n---\n\n### 4. Time Tracking (`pm.time_tracking`)\n**Category:** project_management\n\n**Source behavior:** GitLab has built-in time tracking on issues and MRs using /estimate and /spend quick actions. Total estimated and spent time is displayed on the issue.\n\n**Target behavior:** GitHub does not provide any native time tracking on issues or pull requests. There are no /estimate or /spend commands.\n\n**Impact:** HIGH — All time tracking estimates and spent values from GitLab issues are permanently lost on migration.\n\n**Workaround:** Use third-party GitHub Apps (e.g., ZenHub, Clockify GitHub integration) for time tracking. All GitLab time tracking data is lost during migration unless manually exported.\n\n**Remediation effort:** LOW\n\n**Data migration consideration:** Time tracking data MUST be exported from GitLab before migration; it cannot be imported to GitHub.\n\n---\n\n### 5. Dependency Proxy (`repo.dependency_proxy`)\n**Category:** repository\n\n**Source behavior:** GitLab provides a Dependency Proxy for Docker images and package registries, caching upstream images from Docker Hub and reducing rate-limit issues.\n\n**Target behavior:** GitHub does not offer a native dependency proxy or Docker image caching layer for upstream registries.\n\n**Impact:** HIGH — Dependency proxy pipelines must be re-architected to use an external proxy solution.\n\n**Workaround:** Use GitHub Packages as a private registry alongside GitHub Container Registry. Pull-through caching is not natively supported; use third-party proxy solutions (e.g., Nexus, JFrog Artifactory).\n\n**Remediation effort:** HIGH\n\n**Data migration consideration:** No historical data; cached images must be re-pulled from upstream.\n\n---\n\n### 6. Repository Mirroring (`repo.mirroring`)\n**Category:** repository\n\n**Source behavior:** GitLab supports push mirroring, pull mirroring, and bidirectional mirroring. Mirrors can be configured per project to remote repositories including GitHub, Bitbucket, and others.\n\n**Target behavior:** GitHub does not have native built-in repository mirroring. Repositories cannot be configured to automatically push to or pull from an external remote.\n\n**Impact:** HIGH — Teams relying on GitLab mirroring must implement GitHub Actions-based mirroring workflows.\n\n**Workaround:** Use GitHub Actions workflows scheduled to periodically push/pull to a remote mirror. Third-party tools (e.g., git-mirror-action) can automate this.\n\n**Remediation effort:** MEDIUM\n\n**Data migration consideration:** No data loss. Git history is fully preserved. The automation layer must be re-implemented.\n\n---\n\n### 7. Merge Trains (`review.merge_trains`)\n**Category:** code_review\n\n**Source behavior:** GitLab Merge Trains queue MRs so each is tested against the combined state of all previously queued MRs, preventing broken mainline. Available on GitLab Premium and Ultimate.\n\n**Target behavior:** GitHub does not have a native merge train feature. Pull requests cannot be queued to be tested together against a combined branch state.\n\n**Impact:** HIGH — Teams relying on merge trains for broken-build prevention must adapt to GitHub Merge Queue semantics, which are behaviorally different.\n\n**Workaround:** GitHub Merge Queue (GitHub Enterprise Cloud) provides similar serial-merge guarantees but does not test PRs together before merge; each PR is merged individually after its required checks pass.\n\n**Remediation effort:** LOW\n\n**Data migration consideration:** No data migration needed. Pipeline and workflow strategy must be adapted.\n\n---\n\n### 8. DAST (Dynamic Application Security Testing) (`security.dast`)\n**Category:** security\n\n**Source behavior:** GitLab provides DAST scanning (API and web application) as part of GitLab Ultimate. DAST is configured via .gitlab-ci.yml and can run against deployed environments.\n\n**Target behavior:** GitHub does not provide a native DAST scanning solution. There is no built-in dynamic application security testing in the GitHub platform.\n\n**Impact:** HIGH — GitLab Ultimate DAST pipelines must be completely rewritten using third-party tooling.\n\n**Workaround:** Integrate third-party DAST tools (OWASP ZAP, Burp Suite, Checkmarx DAST) as GitHub Actions steps in the CI workflow.\n\n**Remediation effort:** HIGH\n\n**Data migration consideration:** No historical data. CI pipeline configuration must be rewritten.\n\n---\n\n### 9. SAST (Static Application Security Testing) (`security.sast`)\n**Category:** security\n\n**Source behavior:** GitLab provides built-in SAST analyzers for many languages as part of GitLab Secure. Results appear in the MR security widget and vulnerability report.\n\n**Target behavior:** GitHub provides CodeQL as its SAST engine via GitHub Advanced Security. CodeQL analyzes code on push/PR and results appear in the Security tab. Configuration via .github/workflows/codeql.yml.\n\n**Impact:** HIGH — GitLab SAST runs as CI jobs; GitHub uses CodeQL Actions which requires pipeline rewrite.\n\n**Workaround:** Enable CodeQL default setup in GitHub repository settings. This automatically creates a CodeQL analysis workflow using GitHub's recommended query suites.\n\n\n**Remediation effort:** LOW\n\n**Data migration consideration:** No finding history can be migrated. A new CodeQL baseline scan must be run post-migration.\n\n---\n\n### 10. Multi-File Snippets (`snippets.multi_file`)\n**Category:** snippets\n\n**Source behavior:** GitLab snippets support multiple files within a single snippet. Each file has its own name and content.\n\n**Target behavior:** GitHub Gists support multiple files in a single Gist, but the feature is limited compared to GitLab snippets. Files share a flat namespace within the Gist.\n\n**Impact:** HIGH — GitLab multi-file snippets with directory structure cannot be directly represented in a GitHub Gist.\n\n**Workaround:** Use a single Gist with multiple files; file organization must be managed by naming convention rather than directory structure.\n\n**Remediation effort:** MEDIUM\n\n**Data migration consideration:** Content is preserved; directory structure and grouping metadata are lost.\n\n---\n\n---\n\n## 3. 🟡 Behavioral Differences\n### 1. IP Allowlist (`access.ip_allowlist`)\n**Category:** access_control\n\nGitLab groups support IP restriction lists. Access to the group and its projects is denied for requests outside the configured CIDR ranges. -> GitHub Enterprise Cloud organizations and enterprises support IP allowlists restricting access to specific CIDR ranges.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 2. Team / Group Hierarchy (`access.team_hierarchy`)\n**Category:** access_control\n\nGitLab groups support arbitrary nesting depth (subgroups within subgroups). Permissions cascade from parent to child groups. Projects inherit group-level members and permissions. -> GitHub organizations support nested teams (parent-child teams). Permission inheritance works for child teams. However, organizations have only one level — there is no subgroup equivalent to GitLab's multi-level group nesting.\n\n**Action required:** Deep group hierarchies must be flattened into GitHub teams with naming conventions. Inherited permissions from multi-level groups must be manually reconstructed. This is one of the most labor-intensive manual steps in a GitLab-to-GitHub migration.\n\n\n---\n\n### 3. Pipeline Artifacts (`cicd.artifacts`)\n**Category:** cicd\n\nGitLab artifacts are files produced by jobs. They can be passed between jobs in the same pipeline, downloaded from the UI, and have configurable expiry. -> GitHub Actions artifacts can be uploaded and downloaded within a workflow run using actions/upload-artifact and actions/download-artifact. Default retention is 90 days.\n\n**Action required:** LOW for most use cases. Release artifacts should be published to GitHub Releases rather than relying on Actions artifact storage.\n\n\n---\n\n### 4. Deployment Environments (`cicd.environments`)\n**Category:** cicd\n\nGitLab environments track deployment state with a deployment history per environment. Environments can have deployment rules, required approvals, and protected status. -> GitHub Actions environments track deployment history per environment. Environments can have required reviewers, wait timers, and deployment branch policies.\n\n**Action required:** Environments must be manually recreated with the correct protection rules and secrets. GitLab deployment history is not migratable to GitHub.\n\n\n---\n\n### 5. CI/CD Pipelines (`cicd.pipelines`)\n**Category:** cicd\n\nGitLab CI/CD pipelines are defined in .gitlab-ci.yml. They support stages, jobs, DAG-based ordering, parent-child pipelines, and multi-project pipelines. -> GitHub Actions workflows are defined in .github/workflows/*.yml. They support jobs, steps, reusable workflows, matrix strategies, and conditional expressions.\n\n**Action required:** All CI/CD pipeline configurations must be fully rewritten from .gitlab-ci.yml to GitHub Actions YAML. This is one of the most significant migration efforts.\n\n\n---\n\n### 6. CI/CD Runners (`cicd.runners`)\n**Category:** cicd\n\nGitLab supports shared runners (hosted by GitLab), group runners, and project runners. Runners are registered with a token and can be tagged. -> GitHub supports GitHub-hosted runners (various OS flavors) and self-hosted runners. Runners are registered at repository, organization, or enterprise level.\n\n**Action required:** MEDIUM. Runner infrastructure must be re-registered with GitHub. Self-hosted runner images may need updating to use the GitHub Actions runner agent instead of GitLab Runner.\n\n\n---\n\n### 7. Webhooks (`integrations.webhooks`)\n**Category:** integrations\n\nGitLab supports project, group, and system-level webhooks. Webhooks can be triggered by a wide range of events and support custom headers and SSL verification settings. -> GitHub supports repository, organization, and GitHub App webhooks. Webhooks fire on a configurable set of events. GitHub supports payload delivery tracking and redeliver.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 8. Label Case Sensitivity (`labels.case_sensitivity`)\n**Category:** labels\n\nGitLab label names are case-insensitive. \"Bug\" and \"bug\" are treated as the same label. This can cause confusion during migrations to platforms with case-sensitive labels. -> GitHub label names are case-insensitive for matching but preserve the case in which they were created. Attempting to create a label that differs only by case will result in a conflict.\n\n**Action required:** MEDIUM — Target platforms with case-sensitive labels may create duplicate labels during import.\n\n---\n\n### 9. Maven / Gradle Package Hosting (`packages.maven`)\n**Category:** packages\n\nGitLab Package Registry hosts Maven artifacts. Supports both project-level and group-level repositories. Standard Maven settings.xml configuration required. -> GitHub Packages hosts Maven and Gradle packages. Authentication uses GITHUB_TOKEN. The repository URL format differs from GitLab; settings.xml or build.gradle must be updated.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 10. npm Package Hosting (`packages.npm`)\n**Category:** packages\n\nGitLab Package Registry hosts npm packages at the project or group scope. Packages are published using the standard npm publish command with GitLab registry URL. -> GitHub Packages hosts npm packages scoped to a user, organization, or repository. Authentication uses GITHUB_TOKEN or PAT. Package URLs differ from GitLab registry URLs.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 11. NuGet Package Hosting (`packages.nuget`)\n**Category:** packages\n\nGitLab Package Registry hosts NuGet packages at project or group scope. Compatible with dotnet CLI and NuGet CLI. -> GitHub Packages hosts NuGet packages. Authentication uses GITHUB_TOKEN. The package source URL and nuget.config must be updated to point to GitHub's registry.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 12. Project Boards / Kanban (`pm.boards`)\n**Category:** project_management\n\nGitLab boards are per-project and per-group Kanban boards. Boards use labels as columns. Multiple boards per project are supported (Premium+). Group boards aggregate issues across projects. -> GitHub Projects v2 provides Kanban board views with configurable fields, filters, and grouping. Projects are organization-scoped and linked to issues/PRs via metadata rather than label-based columns.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 13. Milestones (`pm.milestones`)\n**Category:** project_management\n\nGitLab milestones can be scoped to projects or groups. Milestones track progress via issue and MR counts. Group milestones aggregate across projects. -> GitHub milestones are scoped to individual repositories. There is no organization-level or cross-repository milestone.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 14. Container Registry (`repo.container_registry`)\n**Category:** repository\n\nGitLab has a built-in container registry (registry.gitlab.com) co-located with each project. Supports Docker V2 and OCI image formats. Supports cleanup policies. -> GitHub Container Registry (ghcr.io) is a standalone OCI-compliant container registry. Supports Docker V2, OCI images, and multi-arch manifests. Linked to GitHub packages.\n\n**Action required:** All container image references in Dockerfiles, Kubernetes manifests, Helm charts, and CI pipelines must be updated to the new ghcr.io URLs. Image retention policies must be reimplemented via API or third-party tooling.\n\n\n---\n\n### 15. Package Registry (`repo.packages`)\n**Category:** repository\n\nGitLab Package Registry supports npm, Maven, PyPI, NuGet, Conan, Helm, Composer, and generic packages. All packages are scoped to a project or group. -> GitHub Packages supports npm, Maven, Gradle, NuGet, RubyGems, and Docker/OCI. Does not natively support PyPI, Helm, Conan, or Composer. Packages are scoped to repositories or organizations.\n\n**Action required:** Projects using unsupported package formats must be migrated to an alternative external registry. All CI pipeline publish steps and consumer pip/helm install commands must be updated.\n\n\n---\n\n### 16. Protected Branches (`repo.protected_branches`)\n**Category:** repository\n\nGitLab protected branches allow per-role push/merge/force-push restrictions. Roles include Maintainer, Developer, No one. Multiple protection rules can coexist. -> GitHub protected branches enforce required status checks, required reviews, signed commits, and push restrictions. Rules apply per-branch pattern.\n\n**Action required:** All branch protection rules must be manually recreated on GitHub. Automated migration of protection rules from GitLab is not feasible without custom tooling.\n\n\n---\n\n### 17. Approval Rules (`review.approval_rules`)\n**Category:** code_review\n\nGitLab supports named approval rules per merge request. Rules can require approvals from specific users, groups, or code owners. Eligible approvers and minimum approval count are configurable. -> GitHub required reviews are configured via branch protection or rulesets. A minimum number of approving reviews can be required before merging. Named approval rules (as in GitLab) are not a concept — all approvals are counted toward a single threshold.\n\n**Action required:** Complex multi-rule approval workflows cannot be directly replicated on GitHub. Approval governance structures must be redesigned for the GitHub model.\n\n\n---\n\n### 18. Code Owners (`review.code_owners`)\n**Category:** code_review\n\nGitLab supports a CODEOWNERS file (or .gitlab/CODEOWNERS). Code owners are automatically added as required approvers when their owned paths are changed. -> GitHub supports a CODEOWNERS file in the root, .github/, or docs/ directory. Code owners are auto-requested for review when their paths change. Syntax differs from GitLab in some edge cases.\n\n**Action required:** CODEOWNERS files must be reviewed and updated. Group/team references must be converted from GitLab namespace syntax to GitHub @org/team syntax.\n\n\n---\n\n### 19. Merge Strategies (`review.merge_strategies`)\n**Category:** code_review\n\nGitLab supports merge commit, squash and merge, and fast-forward merge strategies. The allowed strategy can be configured per project. -> GitHub supports merge commit, squash and merge, and rebase and merge strategies. The allowed strategies can be configured per repository.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 20. Multiple Assignees (`review.multiple_assignees`)\n**Category:** code_review\n\nGitLab allows multiple assignees on merge requests and issues. There is no hard cap on the number of assignees. -> GitHub allows multiple assignees on pull requests and issues, but is limited to a maximum of 10 assignees per issue or pull request.\n\n**Action required:** LOW for most teams. Only affects projects with unusually broad issue ownership. Assignee truncation is silent and may go unnoticed.\n\n\n---\n\n### 21. Audit Log (`security.audit_log`)\n**Category:** security\n\nGitLab provides audit events at group and instance level. Events cover user actions, permission changes, and administrative operations. Available via UI and API. -> GitHub provides audit logs at the organization and enterprise level accessible via UI and API/streaming. Events cover user actions, repo changes, and admin operations.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 22. Custom Secret Detection Patterns (`security.custom_secret_patterns`)\n**Category:** security\n\nGitLab secret detection supports extending detection logic with custom rulesets for organization-specific patterns (tier-dependent). -> GitHub Advanced Security supports custom secret scanning patterns in addition to built-in detectors. Availability depends on Advanced Security enablement.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 23. Dependency Scanning (`security.dependency_scanning`)\n**Category:** security\n\nGitLab provides dependency scanning as CI jobs, detecting vulnerabilities in project dependencies across many ecosystems. -> GitHub Dependabot provides dependency vulnerability scanning, automated alerts, and automated PRs to update vulnerable dependencies.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n### 24. Secret Detection (`security.secret_detection`)\n**Category:** security\n\nGitLab includes built-in secret detection as part of GitLab Secure. Scans are run as CI jobs and results appear in the merge request security report. -> GitHub provides secret scanning for public repositories and GitHub Advanced Security (GHAS) for private repositories. Push protection can block commits containing secrets.\n\n**Action required:** Review and validate behavior before migration.\n\n---\n\n---\n\n## 4. 🟢 Seamless Migrations\n- access.deploy_keys, access.fine_grained_tokens, access.scim_provisioning, access.sso, cicd.deployment_approvals, cicd.matrix_builds, cicd.oidc_workload_identity, cicd.pipeline_triggers, cicd.protected_variables, cicd.reusable_components, cicd.schedules, labels.color, labels.default_labels, labels.description, pm.issue_templates, pm.roadmaps, repo.archived_state, repo.branch_rules, repo.fork_restrictions, repo.lfs, repo.releases, repo.signed_commits, repo.submodule_support, repo.transfer, repo.visibility_control, repo.wikis, review.auto_merge, review.branch_protection_bypass, review.draft_pr, review.merge_queue, review.pr_templates, review.required_reviewers, review.review_threads, review.status_checks, review.suggested_changes, snippets.embed, snippets.personal_scope, snippets.versioning, snippets.visibility\n\n---\n\n## 5. 📋 Coverage Report\n- Low/unknown confidence capabilities: None\n- Not covered capabilities: None\n- Recommendation: Manually validate all listed items before migration.",
+  "sections": {
+    "executive_summary": {
+      "title": "Executive Summary",
+      "content": "42 compatibility gaps identified.",
+      "metrics": {
+        "total_capabilities": 81,
+        "supported": 39,
+        "partial": 32,
+        "unsupported": 10,
+        "coverage_percentage": 48.1
+      }
+    },
+    "hard_blockers": {
+      "title": "Hard Blockers",
+      "items": [
+        {
+          "capability_id": "labels.group_level",
+          "capability_name": "Group-Level Labels",
+          "category": "labels",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab allows labels to be defined at the group level. Group labels are inherited by all projects within the group and appear alongside project labels.",
+          "target_behavior": "GitHub labels exist only at the repository level. There is no organization-level label that is inherited by all repositories.",
+          "migration_impact": "HIGH — GitLab group labels must be manually replicated to each GitHub repository.",
+          "workaround": "Use GitHub's label management API or a GitHub Action to synchronize a canonical set of labels to all repositories in an organization.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "labels.scoped",
+          "capability_name": "Scoped Labels",
+          "category": "labels",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab scoped labels use the :: separator (e.g., type::bug, type::feature). Within a scope, only one label can be applied at a time — applying a new one removes the existing scoped label.",
+          "target_behavior": "GitHub does not have a native scoped label concept with mutual exclusivity. Labels are flat.",
+          "migration_impact": "HIGH — GitLab scoped label enforcement semantics are completely lost on migration to GitHub.",
+          "workaround": "Retain the :: separator in the label name when migrating from GitLab, but mutual-exclusivity enforcement must be implemented via GitHub Actions or external automation.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "pm.confidential_issues",
+          "capability_name": "Confidential Issues",
+          "category": "project_management",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab issues can be marked as confidential, hiding them from non-member users while remaining visible to project members with Reporter role or above.",
+          "target_behavior": "GitHub does not support confidential issues. All issues in a repository are visible to all repository collaborators with read access. There is no per-issue visibility control.",
+          "migration_impact": "HIGH — Confidential issue content will become visible to all repository collaborators after migration.",
+          "workaround": "Use a separate private repository for sensitive issues, or use GitHub's issue-level locking as a partial substitute. Neither fully replicates GitLab's per-issue confidentiality.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "pm.time_tracking",
+          "capability_name": "Time Tracking",
+          "category": "project_management",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab has built-in time tracking on issues and MRs using /estimate and /spend quick actions. Total estimated and spent time is displayed on the issue.",
+          "target_behavior": "GitHub does not provide any native time tracking on issues or pull requests. There are no /estimate or /spend commands.",
+          "migration_impact": "HIGH — All time tracking estimates and spent values from GitLab issues are permanently lost on migration.",
+          "workaround": "Use third-party GitHub Apps (e.g., ZenHub, Clockify GitHub integration) for time tracking. All GitLab time tracking data is lost during migration unless manually exported.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.dependency_proxy",
+          "capability_name": "Dependency Proxy",
+          "category": "repository",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab provides a Dependency Proxy for Docker images and package registries, caching upstream images from Docker Hub and reducing rate-limit issues.",
+          "target_behavior": "GitHub does not offer a native dependency proxy or Docker image caching layer for upstream registries.",
+          "migration_impact": "HIGH — Dependency proxy pipelines must be re-architected to use an external proxy solution.",
+          "workaround": "Use GitHub Packages as a private registry alongside GitHub Container Registry. Pull-through caching is not natively supported; use third-party proxy solutions (e.g., Nexus, JFrog Artifactory).",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.mirroring",
+          "capability_name": "Repository Mirroring",
+          "category": "repository",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab supports push mirroring, pull mirroring, and bidirectional mirroring. Mirrors can be configured per project to remote repositories including GitHub, Bitbucket, and others.",
+          "target_behavior": "GitHub does not have native built-in repository mirroring. Repositories cannot be configured to automatically push to or pull from an external remote.",
+          "migration_impact": "HIGH — Teams relying on GitLab mirroring must implement GitHub Actions-based mirroring workflows.",
+          "workaround": "Use GitHub Actions workflows scheduled to periodically push/pull to a remote mirror. Third-party tools (e.g., git-mirror-action) can automate this.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.merge_trains",
+          "capability_name": "Merge Trains",
+          "category": "code_review",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab Merge Trains queue MRs so each is tested against the combined state of all previously queued MRs, preventing broken mainline. Available on GitLab Premium and Ultimate.",
+          "target_behavior": "GitHub does not have a native merge train feature. Pull requests cannot be queued to be tested together against a combined branch state.",
+          "migration_impact": "HIGH — Teams relying on merge trains for broken-build prevention must adapt to GitHub Merge Queue semantics, which are behaviorally different.",
+          "workaround": "GitHub Merge Queue (GitHub Enterprise Cloud) provides similar serial-merge guarantees but does not test PRs together before merge; each PR is merged individually after its required checks pass.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.dast",
+          "capability_name": "DAST (Dynamic Application Security Testing)",
+          "category": "security",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab provides DAST scanning (API and web application) as part of GitLab Ultimate. DAST is configured via .gitlab-ci.yml and can run against deployed environments.",
+          "target_behavior": "GitHub does not provide a native DAST scanning solution. There is no built-in dynamic application security testing in the GitHub platform.",
+          "migration_impact": "HIGH — GitLab Ultimate DAST pipelines must be completely rewritten using third-party tooling.",
+          "workaround": "Integrate third-party DAST tools (OWASP ZAP, Burp Suite, Checkmarx DAST) as GitHub Actions steps in the CI workflow.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.sast",
+          "capability_name": "SAST (Static Application Security Testing)",
+          "category": "security",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab provides built-in SAST analyzers for many languages as part of GitLab Secure. Results appear in the MR security widget and vulnerability report.",
+          "target_behavior": "GitHub provides CodeQL as its SAST engine via GitHub Advanced Security. CodeQL analyzes code on push/PR and results appear in the Security tab. Configuration via .github/workflows/codeql.yml.",
+          "migration_impact": "HIGH — GitLab SAST runs as CI jobs; GitHub uses CodeQL Actions which requires pipeline rewrite.",
+          "workaround": "Enable CodeQL default setup in GitHub repository settings. This automatically creates a CodeQL analysis workflow using GitHub's recommended query suites.\n",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "snippets.multi_file",
+          "capability_name": "Multi-File Snippets",
+          "category": "snippets",
+          "gap_type": "HARD_BLOCKER",
+          "source_behavior": "GitLab snippets support multiple files within a single snippet. Each file has its own name and content.",
+          "target_behavior": "GitHub Gists support multiple files in a single Gist, but the feature is limited compared to GitLab snippets. Files share a flat namespace within the Gist.",
+          "migration_impact": "HIGH — GitLab multi-file snippets with directory structure cannot be directly represented in a GitHub Gist.",
+          "workaround": "Use a single Gist with multiple files; file organization must be managed by naming convention rather than directory structure.",
+          "confidence": "HIGH"
+        }
+      ]
+    },
+    "behavioral_differences": {
+      "title": "Behavioral Differences",
+      "items": [
+        {
+          "capability_id": "access.ip_allowlist",
+          "capability_name": "IP Allowlist",
+          "category": "access_control",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab groups support IP restriction lists. Access to the group and its projects is denied for requests outside the configured CIDR ranges.",
+          "target_behavior": "GitHub Enterprise Cloud organizations and enterprises support IP allowlists restricting access to specific CIDR ranges.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "access.team_hierarchy",
+          "capability_name": "Team / Group Hierarchy",
+          "category": "access_control",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab groups support arbitrary nesting depth (subgroups within subgroups). Permissions cascade from parent to child groups. Projects inherit group-level members and permissions.",
+          "target_behavior": "GitHub organizations support nested teams (parent-child teams). Permission inheritance works for child teams. However, organizations have only one level — there is no subgroup equivalent to GitLab's multi-level group nesting.",
+          "migration_impact": "Deep group hierarchies must be flattened into GitHub teams with naming conventions. Inherited permissions from multi-level groups must be manually reconstructed. This is one of the most labor-intensive manual steps in a GitLab-to-GitHub migration.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.artifacts",
+          "capability_name": "Pipeline Artifacts",
+          "category": "cicd",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab artifacts are files produced by jobs. They can be passed between jobs in the same pipeline, downloaded from the UI, and have configurable expiry.",
+          "target_behavior": "GitHub Actions artifacts can be uploaded and downloaded within a workflow run using actions/upload-artifact and actions/download-artifact. Default retention is 90 days.",
+          "migration_impact": "LOW for most use cases. Release artifacts should be published to GitHub Releases rather than relying on Actions artifact storage.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.environments",
+          "capability_name": "Deployment Environments",
+          "category": "cicd",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab environments track deployment state with a deployment history per environment. Environments can have deployment rules, required approvals, and protected status.",
+          "target_behavior": "GitHub Actions environments track deployment history per environment. Environments can have required reviewers, wait timers, and deployment branch policies.",
+          "migration_impact": "Environments must be manually recreated with the correct protection rules and secrets. GitLab deployment history is not migratable to GitHub.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.pipelines",
+          "capability_name": "CI/CD Pipelines",
+          "category": "cicd",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab CI/CD pipelines are defined in .gitlab-ci.yml. They support stages, jobs, DAG-based ordering, parent-child pipelines, and multi-project pipelines.",
+          "target_behavior": "GitHub Actions workflows are defined in .github/workflows/*.yml. They support jobs, steps, reusable workflows, matrix strategies, and conditional expressions.",
+          "migration_impact": "All CI/CD pipeline configurations must be fully rewritten from .gitlab-ci.yml to GitHub Actions YAML. This is one of the most significant migration efforts.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.runners",
+          "capability_name": "CI/CD Runners",
+          "category": "cicd",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab supports shared runners (hosted by GitLab), group runners, and project runners. Runners are registered with a token and can be tagged.",
+          "target_behavior": "GitHub supports GitHub-hosted runners (various OS flavors) and self-hosted runners. Runners are registered at repository, organization, or enterprise level.",
+          "migration_impact": "MEDIUM. Runner infrastructure must be re-registered with GitHub. Self-hosted runner images may need updating to use the GitHub Actions runner agent instead of GitLab Runner.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "integrations.webhooks",
+          "capability_name": "Webhooks",
+          "category": "integrations",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab supports project, group, and system-level webhooks. Webhooks can be triggered by a wide range of events and support custom headers and SSL verification settings.",
+          "target_behavior": "GitHub supports repository, organization, and GitHub App webhooks. Webhooks fire on a configurable set of events. GitHub supports payload delivery tracking and redeliver.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "labels.case_sensitivity",
+          "capability_name": "Label Case Sensitivity",
+          "category": "labels",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab label names are case-insensitive. \"Bug\" and \"bug\" are treated as the same label. This can cause confusion during migrations to platforms with case-sensitive labels.",
+          "target_behavior": "GitHub label names are case-insensitive for matching but preserve the case in which they were created. Attempting to create a label that differs only by case will result in a conflict.",
+          "migration_impact": "MEDIUM — Target platforms with case-sensitive labels may create duplicate labels during import.",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "packages.maven",
+          "capability_name": "Maven / Gradle Package Hosting",
+          "category": "packages",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Package Registry hosts Maven artifacts. Supports both project-level and group-level repositories. Standard Maven settings.xml configuration required.",
+          "target_behavior": "GitHub Packages hosts Maven and Gradle packages. Authentication uses GITHUB_TOKEN. The repository URL format differs from GitLab; settings.xml or build.gradle must be updated.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "packages.npm",
+          "capability_name": "npm Package Hosting",
+          "category": "packages",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Package Registry hosts npm packages at the project or group scope. Packages are published using the standard npm publish command with GitLab registry URL.",
+          "target_behavior": "GitHub Packages hosts npm packages scoped to a user, organization, or repository. Authentication uses GITHUB_TOKEN or PAT. Package URLs differ from GitLab registry URLs.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "packages.nuget",
+          "capability_name": "NuGet Package Hosting",
+          "category": "packages",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Package Registry hosts NuGet packages at project or group scope. Compatible with dotnet CLI and NuGet CLI.",
+          "target_behavior": "GitHub Packages hosts NuGet packages. Authentication uses GITHUB_TOKEN. The package source URL and nuget.config must be updated to point to GitHub's registry.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "pm.boards",
+          "capability_name": "Project Boards / Kanban",
+          "category": "project_management",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab boards are per-project and per-group Kanban boards. Boards use labels as columns. Multiple boards per project are supported (Premium+). Group boards aggregate issues across projects.",
+          "target_behavior": "GitHub Projects v2 provides Kanban board views with configurable fields, filters, and grouping. Projects are organization-scoped and linked to issues/PRs via metadata rather than label-based columns.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "pm.milestones",
+          "capability_name": "Milestones",
+          "category": "project_management",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab milestones can be scoped to projects or groups. Milestones track progress via issue and MR counts. Group milestones aggregate across projects.",
+          "target_behavior": "GitHub milestones are scoped to individual repositories. There is no organization-level or cross-repository milestone.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.container_registry",
+          "capability_name": "Container Registry",
+          "category": "repository",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab has a built-in container registry (registry.gitlab.com) co-located with each project. Supports Docker V2 and OCI image formats. Supports cleanup policies.",
+          "target_behavior": "GitHub Container Registry (ghcr.io) is a standalone OCI-compliant container registry. Supports Docker V2, OCI images, and multi-arch manifests. Linked to GitHub packages.",
+          "migration_impact": "All container image references in Dockerfiles, Kubernetes manifests, Helm charts, and CI pipelines must be updated to the new ghcr.io URLs. Image retention policies must be reimplemented via API or third-party tooling.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.packages",
+          "capability_name": "Package Registry",
+          "category": "repository",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Package Registry supports npm, Maven, PyPI, NuGet, Conan, Helm, Composer, and generic packages. All packages are scoped to a project or group.",
+          "target_behavior": "GitHub Packages supports npm, Maven, Gradle, NuGet, RubyGems, and Docker/OCI. Does not natively support PyPI, Helm, Conan, or Composer. Packages are scoped to repositories or organizations.",
+          "migration_impact": "Projects using unsupported package formats must be migrated to an alternative external registry. All CI pipeline publish steps and consumer pip/helm install commands must be updated.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.protected_branches",
+          "capability_name": "Protected Branches",
+          "category": "repository",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab protected branches allow per-role push/merge/force-push restrictions. Roles include Maintainer, Developer, No one. Multiple protection rules can coexist.",
+          "target_behavior": "GitHub protected branches enforce required status checks, required reviews, signed commits, and push restrictions. Rules apply per-branch pattern.",
+          "migration_impact": "All branch protection rules must be manually recreated on GitHub. Automated migration of protection rules from GitLab is not feasible without custom tooling.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.approval_rules",
+          "capability_name": "Approval Rules",
+          "category": "code_review",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab supports named approval rules per merge request. Rules can require approvals from specific users, groups, or code owners. Eligible approvers and minimum approval count are configurable.",
+          "target_behavior": "GitHub required reviews are configured via branch protection or rulesets. A minimum number of approving reviews can be required before merging. Named approval rules (as in GitLab) are not a concept — all approvals are counted toward a single threshold.",
+          "migration_impact": "Complex multi-rule approval workflows cannot be directly replicated on GitHub. Approval governance structures must be redesigned for the GitHub model.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.code_owners",
+          "capability_name": "Code Owners",
+          "category": "code_review",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab supports a CODEOWNERS file (or .gitlab/CODEOWNERS). Code owners are automatically added as required approvers when their owned paths are changed.",
+          "target_behavior": "GitHub supports a CODEOWNERS file in the root, .github/, or docs/ directory. Code owners are auto-requested for review when their paths change. Syntax differs from GitLab in some edge cases.",
+          "migration_impact": "CODEOWNERS files must be reviewed and updated. Group/team references must be converted from GitLab namespace syntax to GitHub @org/team syntax.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.merge_strategies",
+          "capability_name": "Merge Strategies",
+          "category": "code_review",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab supports merge commit, squash and merge, and fast-forward merge strategies. The allowed strategy can be configured per project.",
+          "target_behavior": "GitHub supports merge commit, squash and merge, and rebase and merge strategies. The allowed strategies can be configured per repository.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.multiple_assignees",
+          "capability_name": "Multiple Assignees",
+          "category": "code_review",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab allows multiple assignees on merge requests and issues. There is no hard cap on the number of assignees.",
+          "target_behavior": "GitHub allows multiple assignees on pull requests and issues, but is limited to a maximum of 10 assignees per issue or pull request.",
+          "migration_impact": "LOW for most teams. Only affects projects with unusually broad issue ownership. Assignee truncation is silent and may go unnoticed.\n",
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.audit_log",
+          "capability_name": "Audit Log",
+          "category": "security",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab provides audit events at group and instance level. Events cover user actions, permission changes, and administrative operations. Available via UI and API.",
+          "target_behavior": "GitHub provides audit logs at the organization and enterprise level accessible via UI and API/streaming. Events cover user actions, repo changes, and admin operations.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.custom_secret_patterns",
+          "capability_name": "Custom Secret Detection Patterns",
+          "category": "security",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab secret detection supports extending detection logic with custom rulesets for organization-specific patterns (tier-dependent).",
+          "target_behavior": "GitHub Advanced Security supports custom secret scanning patterns in addition to built-in detectors. Availability depends on Advanced Security enablement.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "MEDIUM"
+        },
+        {
+          "capability_id": "security.dependency_scanning",
+          "capability_name": "Dependency Scanning",
+          "category": "security",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab provides dependency scanning as CI jobs, detecting vulnerabilities in project dependencies across many ecosystems.",
+          "target_behavior": "GitHub Dependabot provides dependency vulnerability scanning, automated alerts, and automated PRs to update vulnerable dependencies.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.secret_detection",
+          "capability_name": "Secret Detection",
+          "category": "security",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab includes built-in secret detection as part of GitLab Secure. Scans are run as CI jobs and results appear in the merge request security report.",
+          "target_behavior": "GitHub provides secret scanning for public repositories and GitHub Advanced Security (GHAS) for private repositories. Push protection can block commits containing secrets.",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "packages.generic",
+          "capability_name": "Generic Package / Artifact Hosting",
+          "category": "packages",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab supports a generic package type allowing arbitrary binary files to be uploaded and versioned via the Package Registry API.",
+          "target_behavior": "GitHub Packages has no generic package type. There is no equivalent to GitLab's generic package registry for uploading arbitrary versioned binary files.",
+          "migration_impact": "MEDIUM — GitLab generic packages must be migrated to GitHub Releases or an external artifact store.",
+          "workaround": "Use GitHub Releases assets for versioned binary file distribution, or GitHub Actions artifacts for build outputs. GitHub Releases requires a Git tag per version, which may not suit all use cases.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "packages.pypi",
+          "capability_name": "PyPI Package Hosting",
+          "category": "packages",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Package Registry supports Python packages. Packages are published with twine and installed via pip using GitLab registry URL.",
+          "target_behavior": "GitHub Packages does not support the PyPI format. Python packages cannot be published via pip/twine to GitHub Packages natively.",
+          "migration_impact": "HIGH — All GitLab PyPI registry packages must be migrated to an alternative registry; CI pipeline publish steps must be rewritten.",
+          "workaround": "Publish Python packages to PyPI (public), a private PyPI-compatible server (Artifactory, Nexus, Cloudsmith), or distribute as GitHub Releases assets. All options require updating pip install URLs in projects.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "pm.epics",
+          "capability_name": "Epics",
+          "category": "project_management",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Epics (Premium+) group related issues across projects and milestones under a single initiative with start/due dates and child epic nesting.",
+          "target_behavior": "GitHub has no native epic concept. There is no built-in way to group related issues across repositories under a named initiative with hierarchy.",
+          "migration_impact": "HIGH — GitLab epic hierarchies and cross-project epic grouping are lost on migration.",
+          "workaround": "Use GitHub Projects v2 with a custom \"Epic\" field, or use issues as epics with tasklist sub-issues (GitHub Issues tasklists, currently in preview). Neither replicates GitLab's nested epic hierarchy.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.review_apps",
+          "capability_name": "Review Apps / Deploy Previews",
+          "category": "code_review",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Review Apps automatically deploy a per-branch environment from CI pipeline jobs, displaying the URL on the merge request. Requires CI configuration using dynamic environments.",
+          "target_behavior": "GitHub has no native review app or deploy-preview concept. Per-branch deployment previews must be built entirely within GitHub Actions using environments.",
+          "migration_impact": "MEDIUM — GitLab review apps work with minimal CI config; GitHub requires significantly more Actions workflow work to achieve equivalent per-branch previews.",
+          "workaround": "Use a GitHub Actions workflow triggered on pull_request to deploy the branch to a named environment and post the URL as a PR comment. Requires custom workflow authoring for every project.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.compliance_frameworks",
+          "capability_name": "Compliance Frameworks",
+          "category": "security",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Ultimate compliance frameworks allow admins to attach mandatory pipeline configuration to projects, ensuring consistent security gates regardless of project settings.",
+          "target_behavior": "GitHub has no direct equivalent to GitLab compliance frameworks. There is no mechanism to enforce mandatory pipeline steps across all repositories in an organization.",
+          "migration_impact": "HIGH — Compliance framework enforcement must be re-architected using Rulesets and required workflows.",
+          "workaround": "Use GitHub Repository Rulesets with required workflows (GitHub Enterprise) to enforce specific Actions workflows run on all repositories. Coverage and enforcement strength is weaker than GitLab compliance frameworks.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.container_scanning",
+          "capability_name": "Container Scanning",
+          "category": "security",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab provides container scanning as a CI job (Trivy-based) detecting OS and library vulnerabilities in Docker images. Results appear in the MR security report.",
+          "target_behavior": "GitHub has no native container scanning product. GitHub Advanced Security (GHAS) does not include container image vulnerability scanning.",
+          "migration_impact": "HIGH — GitLab container scanning CI jobs must be rewritten using third-party Actions.",
+          "workaround": "Integrate Trivy, Snyk Container, or Aqua Security via GitHub Actions steps. Results can be uploaded to the GitHub Security tab using SARIF format.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "security.license_scanning",
+          "capability_name": "License Scanning",
+          "category": "security",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab Ultimate scans project dependencies for open-source licenses and flags policy violations against a configurable allowlist/denylist.",
+          "target_behavior": "GitHub has no native license scanning. Dependabot checks for vulnerabilities but not license compliance.",
+          "migration_impact": "HIGH — GitLab license compliance scanning has no direct GitHub equivalent.",
+          "workaround": "Integrate FOSSA, Snyk Open Source, or licensee via GitHub Actions. Results are not surfaced natively in the PR security widget.",
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "snippets.project_scope",
+          "capability_name": "Project-Scoped Snippets",
+          "category": "snippets",
+          "gap_type": "BEHAVIORAL_DIFFERENCE",
+          "source_behavior": "GitLab supports project snippets scoped to a specific project, accessible to all project members.",
+          "target_behavior": "GitHub Gists are always user-scoped and cannot be attached to a specific repository or organization. There is no native project-scoped snippet feature.",
+          "migration_impact": "MEDIUM — Project-scoped GitLab snippets must be migrated to Gists or an alternative storage.",
+          "workaround": "Store code snippets as files in a dedicated repository within the organization.",
+          "confidence": "HIGH"
+        }
+      ]
+    },
+    "seamless_migrations": {
+      "title": "Seamless Migrations",
+      "items": [
+        {
+          "capability_id": "access.deploy_keys",
+          "capability_name": "access.deploy_keys",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "access.fine_grained_tokens",
+          "capability_name": "access.fine_grained_tokens",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "access.scim_provisioning",
+          "capability_name": "access.scim_provisioning",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "access.sso",
+          "capability_name": "access.sso",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.deployment_approvals",
+          "capability_name": "cicd.deployment_approvals",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.matrix_builds",
+          "capability_name": "cicd.matrix_builds",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.oidc_workload_identity",
+          "capability_name": "cicd.oidc_workload_identity",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.pipeline_triggers",
+          "capability_name": "cicd.pipeline_triggers",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.protected_variables",
+          "capability_name": "cicd.protected_variables",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.reusable_components",
+          "capability_name": "cicd.reusable_components",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "cicd.schedules",
+          "capability_name": "cicd.schedules",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "labels.color",
+          "capability_name": "labels.color",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "labels.default_labels",
+          "capability_name": "labels.default_labels",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "labels.description",
+          "capability_name": "labels.description",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "pm.issue_templates",
+          "capability_name": "pm.issue_templates",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "pm.roadmaps",
+          "capability_name": "pm.roadmaps",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.archived_state",
+          "capability_name": "repo.archived_state",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.branch_rules",
+          "capability_name": "repo.branch_rules",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.fork_restrictions",
+          "capability_name": "repo.fork_restrictions",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.lfs",
+          "capability_name": "repo.lfs",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.releases",
+          "capability_name": "repo.releases",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.signed_commits",
+          "capability_name": "repo.signed_commits",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.submodule_support",
+          "capability_name": "repo.submodule_support",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.transfer",
+          "capability_name": "repo.transfer",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.visibility_control",
+          "capability_name": "repo.visibility_control",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "repo.wikis",
+          "capability_name": "repo.wikis",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.auto_merge",
+          "capability_name": "review.auto_merge",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.branch_protection_bypass",
+          "capability_name": "review.branch_protection_bypass",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.draft_pr",
+          "capability_name": "review.draft_pr",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.merge_queue",
+          "capability_name": "review.merge_queue",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.pr_templates",
+          "capability_name": "review.pr_templates",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.required_reviewers",
+          "capability_name": "review.required_reviewers",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.review_threads",
+          "capability_name": "review.review_threads",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.status_checks",
+          "capability_name": "review.status_checks",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "review.suggested_changes",
+          "capability_name": "review.suggested_changes",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "snippets.embed",
+          "capability_name": "snippets.embed",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "snippets.personal_scope",
+          "capability_name": "snippets.personal_scope",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "snippets.versioning",
+          "capability_name": "snippets.versioning",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        },
+        {
+          "capability_id": "snippets.visibility",
+          "capability_name": "snippets.visibility",
+          "category": "Compatibility",
+          "gap_type": "SEAMLESS_MIGRATION",
+          "source_behavior": "Supported",
+          "target_behavior": "Supported",
+          "migration_impact": null,
+          "workaround": null,
+          "confidence": "HIGH"
+        }
+      ]
+    },
+    "coverage_report": {
+      "title": "Coverage Report",
+      "by_category": {
+        "Overall": {
+          "count": 81,
+          "coverage": 48.1
+        }
+      }
+    }
+  }
+}
