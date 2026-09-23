@@ -1,8 +1,6 @@
 # GitLab to GHEC Policy vs Current Discovery
 
-Below is the updated full table, keeping the policy metadata in the `Metadata or attribute` column mapped to the closest corresponding CSV column name wherever a corresponding discovery column exists.
-
-Where there is no corresponding CSV column, the policy metadata name is kept and marked as missing in the last column.
+The table below provides a complete comparison of the GitLab-to-GHEC policy against the current discovery data.
 
 | Flag | Condition | What it checks | Metadata or attribute | Available in current discovery |
 | --- | --- | --- | --- | --- |
@@ -44,7 +42,7 @@ The CSV header confirms the corresponding discovery metadata such as `repository
 
 The policy flags and conditions are taken from `Gitlab-to-GHEC_policy3.json` in their original order.
 
-## Reference: Gitlab-to-GHEC_policy3.json
+## Reference: Gitlab-to-GHEC_policy.json
 
 ```json
 {
