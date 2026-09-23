@@ -1,4 +1,4 @@
-# GitLab to GHEC Policy vs Current Discovery
+# GitLab to GHEC Policy vs Current Discovery ANALYSIS
 
 The table below provides a complete comparison of the GitLab-to-GHEC policy against the current discovery data.
 
