@@ -4,34 +4,79 @@
 
 ## 1. Executive Summary
 
-This report presents an exhaustive metadata-level parity analysis between **Bitbucket Cloud** (source) and **GitHub Enterprise Cloud (GHEC)** (target) for the purpose of engineering a custom migration solution. The analysis covers every meaningful metadata item, configuration surface, and capability across repositories, workspaces/projects, users/permissions, branches/tags, pull requests/reviews, issues/project management, CI/CD, deployments, packages, integrations, security, governance, wiki, and collaboration features.
+### 1.1 Purpose and Scope
+This report presents an exhaustive, metadata-level parity and functional equivalence analysis for migrating repositories, collaboration artifacts, configurations, automation, and governance structures from **Bitbucket (Bitbucket Cloud and Bitbucket Data Center / Server)** to **GitHub Enterprise Cloud with Enterprise Managed Users (GHEC EMU)**.
+
+The analysis is engineered to ground custom migration tooling (such as **GitLift**) and enterprise migration delivery. It covers every meaningful VCS and platform metadata category across:
+- **Organizational Hierarchy & Project Containers**
+- **Identity, User Directories, Authentication & Access Control**
+- **Repositories, Settings & Git Object Data**
+- **Git Commit History, Signatures, Tags, LFS & Submodules**
+- **Branch Protection, Merge Checks & Rulesets**
+- **Pull Requests, Code Reviews, Approvals & Tasks**
+- **Issues & Work Tracking (Native vs. Atlassian Ecosystem)**
+- **CI/CD Pipelines, Runners, Variables, Secrets & Environments**
+- **Integrations, Webhooks, Marketplace Apps & AppLinks**
+- **Security, Compliance, Secret Scanning & Governance**
+- **Audit Logs, Forensics & Operational Continuity**
+- **Wikis, Snippets, Downloads & Collaboration Artifacts**
+
+### 1.2 Source Variants: Bitbucket Cloud vs. Bitbucket Data Center / Server
+Because Atlassian maintains two fundamentally distinct architectures under the Bitbucket brand, source behavior is evaluated across both deployment models:
+- **Bitbucket Cloud (SaaS):** Multi-tenant cloud service built on a 3-tier container hierarchy (**Workspace → Project → Repository**). Identity is anchored in Atlassian Accounts / Atlassian Access / Atlassian Organization. Automation is natively driven by **Bitbucket Pipelines** (`bitbucket-pipelines.yml`). Extensibility is governed by Atlassian Forge (hosted serverless) and legacy Atlassian Connect. Public REST API v2.0 (`/2.0/...`). Includes built-in repository issues (`has_issues`) and repository wikis (`has_wiki`).
+- **Bitbucket Data Center / Server (On-Premise / IaaS):** Single-tenant cluster or standalone server built on an instance hierarchy (**Instance → Project → Repository**, alongside personal user namespaces `~username`). Identity is anchored in internal directories, enterprise LDAP, Active Directory, or Atlassian Crowd. Automation traditionally integrates with external CI servers (Bamboo, Jenkins, TeamCity) via the Commit Status API (`/rest/api/1.0/.../builds`). Extensibility relies on server-side Java OSGi plugins (Atlassian SDK), ScriptRunner, and native Git pre-receive / post-receive hooks. REST API v1.0 (`/rest/api/1.0/...`). Bitbucket Data Center does **not** have native built-in issues or wikis, relying 100% on Jira Software and Confluence.
+
+### 1.3 Target Interpretation: GitHub Enterprise Cloud with Enterprise Managed Users (GHEC EMU)
+The target environment for this migration analysis is specifically interpreted through the architecture and governance constraints of **GHEC EMU**:
+- **Enterprise Hierarchy:** Strict 3-tier hierarchy: **Enterprise → Organization → Repository** (with Teams within Organizations). Projects in GHEC (Projects v2) are planning and portfolio tools, not repository security containers.
+- **Managed Identity Model:** All user identities are provisioned and lifecycle-managed authoritatively from an external Identity Provider (Entra ID / Azure AD, Okta, PingFederate) via **SCIM** and authenticated via **OIDC / SAML SSO**. Usernames follow deterministic normalized shortcodes (`[idp_username]_[shortcode]`). Users cannot edit their username, display name, or primary email within GitHub.
+- **Access Control & Group Sync:** Team membership is synchronized from IdP security groups via SCIM group mapping. Direct user-to-team assignments on GitHub can be overwritten by IdP sync.
+- **Outside Collaborator Restrictions:** Standard public GitHub.com accounts cannot be invited to an EMU enterprise. External contributors must either be provisioned as managed EMU enterprise members or invited via the **Guest Collaborator** model (which requires external identities to exist as guest accounts in the enterprise IdP).
+- **Repository Visibility Policies:** Under EMU enterprise policies, public repository creation is typically restricted or disabled entirely. Repositories standardly migrate to **Private** (restricted to explicit team/user grants) or **Internal** (read access granted to all members of the enterprise).
+- **Credentials & Tokens:** Enterprise policies govern fine-grained Personal Access Tokens (PATs), SSH key types, and token maximum lifespans.
+
+### 1.4 Classification Framework & Equivalence Legend
+This report applies a rigorous three-tier master classification aligned with enterprise migration engineering, mapping directly to standard migration workbook categories:
+
+| Report Classification | Workbook Conceptual Category | Definition & Interpretation |
+| :--- | :--- | :--- |
+| 🟢 **Seamless / Direct Migrations** | **Direct equivalent** | Metadata, configuration, or data object transfers to GHEC EMU with complete fidelity and no material transformation of data model, scope, or semantics. Standard API field differences do not disqualify an item. |
+| 🟡 **Migratable with Changes / Behavioral Differences** | **Transformed or partially supported** | Equivalent capability exists in GHEC EMU, but migration requires schema mapping, identifier translation, structural reorganization (e.g., Workspace/Project → Org/Team), workflow adjustment, or API-based reconstruction. Timestamps and actor attribution may shift to migration-time annotations. |
+| 🔴 **Hard Blockers / Cannot Be Migrated** | **No equivalent or not migrated** | No native target capability exists, or historical runtime data cannot be injected into GHEC EMU's append-only data stores (e.g., pipeline execution logs, deployment history, audit events, server-side pre-receive hook scripts). Data must be archived externally. |
+| *Operational Dimension (Highlighted across 🟡 and 🔴)* | **Requires separate handling** | Items that cannot be migrated via standard repository API pipelines and demand dedicated out-of-band operational workflows: IdP SCIM group synchronization, secret re-entry from external vaults, cloud OIDC trust policy updates, Jira remote-link rewriting, webhook consumer payload refactoring, or replacing Java OSGi plugins with external GitHub Apps. |
+
+### 1.5 Important Boundary & Validation Note
+- **Important Boundary:** This analysis establishes **conceptual and functional metadata equivalence** between platforms. It distinguishes platform capabilities from automated migration tooling; the existence of a target capability does not imply that every migration tool migrates it out of the box without custom engineering.
+- **Validation Grounding:** All platform behaviors, constraints, REST/GraphQL endpoints, and limitations have been verified against the latest official documentation from Atlassian (Bitbucket Cloud & Bitbucket Data Center) and GitHub (GitHub Enterprise Cloud & EMU documentation).
+
+---
 
 **Master Inventory Summary:**
 
 | Classification | Count |
 | --- | ---: |
 | 🟢 Seamless / Direct Migrations | 45 |
-| 🟡 Migratable with Changes / Behavioral Differences | 174 |
-| 🔴 Hard Blockers / Cannot Be Migrated | 19 |
-| **Total Unique Metadata/Capabilities** | **238** |
+| 🟡 Migratable with Changes / Behavioral Differences | 179 |
+| 🔴 Hard Blockers / Cannot Be Migrated | 21 |
+| **Total Unique Metadata/Capabilities** | **245** |
 
 **Key Findings:**
 
-1. **Core Git data** (commits, branches, tags, LFS objects, submodules) transfers with high fidelity. Repository-level descriptive metadata (name, description, visibility, default branch) is largely seamless.
+1. **Core Git Data Transfers Seamlessly:** Git commits, trees, blobs, branches, annotated tags, Git LFS objects, and submodules transfer byte-for-byte via mirror push. Commit authorship (author, committer, date, PGP/SSH signatures) is preserved permanently in the Git commit object.
 
-2. **Organizational structure** requires significant transformation. Bitbucket's three-tier hierarchy (Workspace → Project → Repository) does not map directly to GHEC's hierarchy (Enterprise → Organization → Repository with Teams). Projects in Bitbucket carry permissions and grouping semantics that must be decomposed into GHEC Organizations, Teams, and repository grouping conventions.
+2. **Organizational Hierarchy Remapping is Foundational:** Neither Bitbucket Cloud (Workspace → Project → Repo) nor Bitbucket Data Center (Instance → Project → Repo + Personal Repos `~user`) maps 1:1 to GHEC EMU (Enterprise → Organization → Repo). Bitbucket projects must be decomposed into GHEC Organizations or Teams, while project-level grouping is preserved using Custom Repository Properties (`bitbucket_project=KEY`). DC personal repositories (`~username`) must be consolidated into dedicated organization containers (e.g., `org-user-sandboxes`), as EMU prohibits personal repositories on managed accounts.
 
-3. **Permissions and access control** require substantial re-engineering. Bitbucket's workspace roles, project permissions, group model, and repository-level grants differ from GHEC's enterprise/organization/team/repository permission model, custom roles, and outside-collaborator concept.
+3. **Identity & Access Must Shift to IdP/SCIM Automation:** In GHEC EMU, user identity and team membership cannot be freely manipulated by migration scripts. Identities must be provisioned via SCIM from the enterprise IdP (Entra ID, Okta), producing normalized shortcode usernames (`user_shortcode`). Group permissions must be established by mapping IdP groups to GHEC teams. Traditional outside collaborators must be onboarded as IdP guest accounts or EMU members.
 
-4. **Pull request metadata** is migratable but requires careful transformation of reviewers, approvals, tasks, default-reviewer rules, and merge-check semantics. Historical PR data (comments, activity, approvals) can be recreated via API but with altered actor attribution and timestamps.
+4. **Pull Request Metadata Reconstructs with Actor Attribution Caveats:** PR titles, descriptions, branches, review comments, threaded conversations, and approval statuses can be recreated via GHEC REST/GraphQL APIs. However, because GHEC public APIs record the authenticated token owner as the author and set the creation date to execution time, original author identity and timestamps must be preserved via structured body headers (e.g., `*Originally authored by @user on <date>*`) or specialized import workflows.
 
-5. **CI/CD** (Bitbucket Pipelines → GitHub Actions) requires a full rewrite of pipeline definitions. Variables, secrets, environments, deployment gates, runners, caches, artifacts, and schedules all have GHEC equivalents but with different configuration models.
+5. **CI/CD Demands Full Automation Re-Architecture:** Bitbucket Cloud Pipelines (`bitbucket-pipelines.yml`) require conversion to GitHub Actions workflows (`.github/workflows/*.yml`), mapping container steps to Actions jobs, hosted runner sizes (`1x`–`32x`) to GHEC Larger Runners, and Bitbucket Pipes to Marketplace Actions. For Bitbucket Data Center, external CI pipelines (Bamboo, Jenkins) must either be migrated to GitHub Actions or re-pointed to GHEC via commit status webhooks. Secrets cannot be read from source platforms and must be re-obtained from corporate key vaults.
 
-6. **Issues and project management** differ significantly in data model, workflow, fields, and scope. Bitbucket Cloud issues are repository-scoped with fixed fields (kind, priority, component, milestone, version); GitHub Issues use labels, milestones, issue types (beta), and GitHub Projects for workflow tracking.
+6. **Extensibility & Hooks Transition from In-Process to Webhook/API Architecture:** Bitbucket Data Center relies on server-side Java OSGi plugins, ScriptRunner, and native Git pre-receive hooks. GHEC SaaS does not permit server-side scripts. Hook logic must be translated to GHEC **Repository Rulesets** (commit metadata, branch protection, file size) or GitHub Actions PR gates, while OSGi plugins must be replaced with standalone GitHub Apps.
 
-7. **Security features** (secret scanning, code scanning, dependency scanning) exist on both platforms but are different products with different configuration, and Bitbucket Cloud's native security scanning is limited compared to GHEC with GitHub Advanced Security (GHAS).
+7. **Issue Tracking & Wiki Scope Depends on Source Variant:** Bitbucket Cloud native issues (`has_issues`) and wikis (`has_wiki`) migrate to GitHub Issues and GitHub Wikis with schema transformations (mapping kind/priority/component to labels and Projects v2). In Bitbucket Data Center, native issues and wikis do not exist; Jira Software and Confluence serve these functions. For DC migrations, Jira links in commits are preserved via GHEC Autolink References (`PROJ-123`), while Confluence documentation remains untouched.
 
-8. **Hard blockers** are concentrated in areas where Bitbucket Cloud has a unique capability with no GHEC equivalent (e.g., Bitbucket Snippets, Bitbucket Pipes ecosystem references, pipeline build-minute quotas, certain Jira-native integration depth) or where historical operational data (pipeline run history, deployment history, audit logs) cannot be natively imported into GHEC's data stores.
+8. **Runtime Operational Data is a Universal Hard Blocker:** Neither Bitbucket Cloud nor Bitbucket Data Center historical pipeline run logs, deployment execution logs, webhook delivery histories, or audit logs can be injected into GHEC EMU's native data stores. This data must be extracted via REST APIs and archived in an external queryable cold storage service (S3, SIEM, dedicated compliance store).
 
 ---
 
@@ -271,6 +316,11 @@ These metadata items have comparable capabilities on both platforms but require 
 | 172 | **Organization-Level Required Workflows (Rulesets)** (`cicd.org_required_workflows`) | CI/CD | Bitbucket Cloud Pipelines are strictly repository-scoped. There is no workspace-level or project-level setting to enforce that a standardized pipeline must run and pass across all repositories before merging. | GHEC supports Organization Rulesets with the "Require workflows to pass before merging" rule. Org admins can enforce centralized CI/CD workflows (hosted in a central repository) across all organization repos or repos matching specific Custom Properties. | GHEC enables centralized CI/CD governance and security gates that cannot be bypassed or deleted by individual repository admins. | Centralize common compliance, linting, and security workflows into a dedicated `.github` or workflow repository, and apply them org-wide via Organization Rulesets. | Governance enhancement on target; replaces fragmented per-repo Bitbucket pipeline boilerplate. |
 | 173 | **Repository Social Preview Image** (`repo.social_preview`) | Repository | Bitbucket Cloud supports uploading a repository avatar/icon, but does not support custom OpenGraph social preview images (`og:image`) for link sharing cards. | GHEC supports uploading a custom 1280×640 pixel social preview image (OpenGraph banner) displayed when repository links are shared on Slack, Discord, Twitter/X, LinkedIn, and other messaging platforms. | GHEC offers richer link previews for repositories. | If custom social preview branding is desired, generate and upload 1280×640 images to GHEC repository settings (`Settings > General > Social preview`). | Cosmetic enhancement on target; repository avatars can be re-uploaded or expanded into social banners. |
 | 174 | **Repository Temporary Interaction Limits** (`repo.interaction_limits`) | Collaboration | Bitbucket Cloud does not provide interaction limits for public or shared repositories. | GHEC supports temporary interaction limits at both the repository and organization levels, restricting comments, issues, and PR creations to existing users, prior contributors, or collaborators for durations of 24 hours, 3 days, 1 week, 1 month, or 6 months. | Useful moderation and maintenance capability available on GHEC during migration cutover or public incident response. | Document and utilize GHEC interaction limits during migration windows or community moderation events as needed. | Moderation capability on GHEC; no source data to migrate. |
+| 175 | **Personal Repositories (`~username`) (Data Center)** (`repo.personal_repos_dc`) | Org Structure / Repository | Bitbucket Data Center/Server natively supports personal repositories under user namespaces (`~username/repo-name`) with user-administered permissions, outside formal projects. (Bitbucket Cloud does not support personal repositories outside workspaces). | In GHEC EMU, personal repositories on user accounts are strictly restricted or disabled by enterprise policy; all code must reside within an Organization. | Personal repositories cannot be migrated directly to individual EMU user accounts. | Create a designated "personal-staging" or functional organization within the enterprise (e.g., `org-user-sandboxes` or `org-personal-repos`), migrate personal repositories under that organization, and grant the respective EMU user admin/write access via team or direct repo grant. | URL structure changes from `~username/repo` to `org-personal-repos/repo`; ownership transfers from user namespace to organization namespace. |
+| 176 | **Project-Level Webhooks (Data Center)** (`integrations.webhooks.project_dc`) | Integrations | Bitbucket Data Center supports registering webhooks at the Project level (`/rest/api/1.0/projects/{projectKey}/webhooks`), triggering events across all repositories in that project. (Bitbucket Cloud supports workspace- and repository-level webhooks). | GHEC supports webhooks at the Organization level (`POST /orgs/{org}/hooks`) or Repository level (`POST /repos/{owner}/{repo}/hooks`). There is no intermediate "project" webhook. | DC project-level webhooks cannot be created at an intermediate scope. | Map Bitbucket DC project-level webhooks to GHEC Organization-level webhooks (if the project was mapped to a dedicated organization), or fan out the webhook registration to each migrated repository belonging to that project. Update consumers to handle GitHub webhook payload formats. | Webhook secret can be transferred; payload schema is entirely different. |
+| 177 | **PR Review Status – Needs Work (Data Center)** (`review.pr_status_needs_work_dc`) | Code Review | In Bitbucket Data Center, reviewers can set their review status to `NEEDS_WORK` (alongside `APPROVED` and `UNAPPROVED`). (Bitbucket Cloud uses "Changes Requested"). | GHEC Pull Request Reviews support states `CHANGES_REQUESTED`, `APPROVED`, and `COMMENTED`. | Direct semantic equivalent, but state enum differs (`NEEDS_WORK` vs `CHANGES_REQUESTED`). | When recreating historical review states or handling API integrations, map Bitbucket DC `NEEDS_WORK` to GitHub's `CHANGES_REQUESTED`. | Historical review state can be represented; native timestamp and actor attribution caveats apply. |
+| 178 | **HTTP Access Tokens (Data Center)** (`access.http_access_tokens_dc`) | Access | Bitbucket Data Center supports user-scoped, project-scoped, and repository-scoped HTTP Access Tokens with configurable permissions (Read, Write, Admin) and expiration dates, used for Git operations and REST API calls. | GHEC EMU supports Fine-grained Personal Access Tokens (user-scoped) and GitHub App installation tokens (org/repo-scoped). Enterprise policies can enforce mandatory expiration and restrict PAT creation. | Token secrets are write-only / hashed and cannot be exported from Bitbucket DC. | Inventory HTTP access tokens in Bitbucket DC. Provision equivalent GitHub App installation tokens for automation/CI, or instruct EMU users to generate fine-grained PATs with matching repository permissions. | Token values must be regenerated; no automated value migration. |
+| 179 | **Application Links (AppLinks) & Atlassian Ecosystem Integration (Data Center)** (`integrations.applinks_dc`) | Integrations | Bitbucket Data Center uses Application Links (AppLinks) configured with OAuth 1.0a or OAuth 2.0 (2-legged/3-legged) for mutual trust and bi-directional linking with Jira Server/DC, Confluence Server/DC, and Bamboo. | GHEC integrates with Atlassian tools via GitHub Apps (such as the official "GitHub for Jira" app), OAuth Apps, or Autolink references. AppLinks protocol is proprietary to Atlassian on-premise software. | Atlassian AppLinks cannot be established directly to GHEC. | Re-architect integrations: install GitHub for Jira app on Jira Cloud or configure Jira Data Center DVCS connector / GitHub integration app; replace Bamboo AppLinks with GitHub Actions or webhook triggers; use GHEC Autolinks API for Confluence/Jira issue key auto-linking. | Configuration cannot be imported; greenfield integration setup required. |
 
 ---
 
@@ -301,6 +351,8 @@ These items either (a) have no meaningful native GHEC equivalent, or (b) contain
 | 17 | **Bitbucket-Native Jira Development Panel Historical Links** (`integrations.jira_dev_panel_history`) | Integrations | Bitbucket's native Jira integration populates the Jira "Development" panel with references to Bitbucket branches, commits, and PRs. Historical entries persist in Jira issues. | GHEC-Jira integration (via GitHub for Jira app) populates the same Jira "Development" panel with GHEC references going forward, but does not rewrite existing Bitbucket-referenced entries in historical Jira issues. | Every historical Jira issue's Development panel continues to show links to Bitbucket URLs, which will 404 (or redirect for a period) after Bitbucket decommission. | Options: (a) Leave Bitbucket in read-only for a grace period; (b) engineer a custom Jira remote-link rewrite pass to translate historical Bitbucket references to GHEC equivalents using the migration mapping table (complex and Jira-side automation); (c) accept historical link decay. | **Historical Jira-side references not natively migratable.** |
 | 18 | **Bitbucket-Specific Smart Commit Syntax Historical Interpretation** (`integrations.smart_commits_history`) | Integrations | Bitbucket smart commit syntax (`#ISSUE-KEY #time 30m #comment doing work`) executed against Jira at commit time. Historical commits contain the raw text. | GitHub-for-Jira app supports smart commits going forward from installation. Historical Bitbucket commits already in Git history contain the smart-commit text but the transitions/time-logs they triggered occurred on Jira at original push time and are already recorded on Jira side. | No blocker for future smart commits (works via GitHub-for-Jira app). Historical processing already happened at original push time on Jira and is not re-executed. | No action needed for historical (already processed). For future: verify smart commit syntax works with GitHub-for-Jira app configuration. | **No blocker for future; historical already recorded on Jira side.** |
 | 19 | **Bitbucket Cloud Global Search Index** (`search.global_index_history`) | Search | Bitbucket maintains code and content search indexes covering workspace repositories. Search results reflect current index state. | GHEC maintains its own search index (GitHub Code Search). Index is rebuilt automatically after code push. There is no way to transfer search index state itself. | No native index transfer possible. Search must re-index on GHEC (automatic and reasonably fast for reasonable repo sizes). Search history/saved searches per user (if any) do not transfer. | Post-migration, allow GHEC to rebuild search index automatically. User-configured saved searches (if any existed) must be recreated by users. | **No source index migration; automatic re-index on target.** |
+| 20 | **Server-Side Pre-Receive Hooks & ScriptRunner (Data Center)** (`repo.pre_receive_hooks_dc`) | Branch Protection / Governance | Bitbucket Data Center supports custom server-side Git pre-receive hooks (written in Bash, Java, or Groovy via ScriptRunner) and plugins like Yet Another Commit Checker (YACC) that execute synchronously on the server during `git push` to enforce custom commit policies, Jira key validation, and file-size gates. | GHEC is a multi-tenant cloud SaaS platform and does NOT permit execution of custom server-side pre-receive hook scripts. (Pre-receive hooks are only supported on GitHub Enterprise Server, the on-premise product). | Complete blocker for direct server-side script migration. Any custom pre-receive hook logic running on Bitbucket DC cannot be executed on GHEC. | Decompose hook requirements into GHEC native capabilities: (a) Use **Repository Rulesets** for commit message regex, author email matching, and branch naming; (b) Use **Secret Scanning with Push Protection** for credential prevention; (c) Use **GitHub Actions workflows** on `pull_request` triggers for complex multi-system validation; (d) Use local client-side `pre-push` hooks (via Husky) for developer feedback. | **Native server-side execution not representable on GHEC.** Hook scripts must be re-implemented using Rulesets and GitHub Actions. |
+| 21 | **Java OSGi Plugins & Atlassian SDK Extensions (Data Center)** (`integrations.osgi_plugins_dc`) | Integrations | Bitbucket Data Center provides a rich Java OSGi plugin architecture (Atlassian SDK, Atlassian Plugins Framework) allowing deep customization of the Bitbucket UI, repository lifecycle events, database listeners, and authentication providers. | GHEC has no plugin or in-process extension architecture. All external automation and UI extensions must operate outside GitHub using GitHub Apps, REST/GraphQL APIs, and Webhooks. | Bitbucket Data Center plugins cannot be migrated or executed on GHEC. | Inventory all installed DC plugins. Map functional capabilities to third-party GitHub Marketplace Apps, or rewrite internal business logic as external GitHub Apps (using Octokit and webhook listeners) or GitHub Actions. | **Source plugin binaries and internal state not migratable.** Complete architectural replacement required. |
 
 ---
 
@@ -354,7 +406,14 @@ Items requiring any meaningful transformation—even if the target capability ex
 
 5. **API Rate Limits**: Bulk migration via API is subject to GHEC rate limits (5000 requests/hour authenticated, higher with GitHub Apps). Bulk imports of large numbers of issues/PRs/comments must implement backoff and possibly use GitHub Apps for higher throughput.
 
-6. **EMU vs Standard GHEC**: The choice of Enterprise Managed Users (EMU) vs standard GHEC organization membership significantly affects user mapping strategy, invitation flow, and identity model. Decision must be made before migration begins.
+6. **EMU Target Architecture Constraints**: Migrating to GitHub Enterprise Cloud with Enterprise Managed Users (EMU) imposes strict identity and governance boundaries compared to standard GHEC organizations:
+   - **Identity Governance via SCIM:** All user accounts must be provisioned and updated authoritatively through IdP SCIM integrations (Microsoft Entra ID, Okta, PingFederate). Manual account creation or inviting standard personal GitHub.com accounts is blocked.
+   - **Deterministic Username Normalization:** Usernames on GHEC EMU are automatically generated using the IdP username combined with an enterprise shortcode (e.g., `jdoe_octodemo`). The user-mapping catalog must translate Bitbucket account IDs (Cloud) or LDAP/AD usernames (Data Center) directly to the exact EMU shortcode username.
+   - **Immutable User Profiles:** Managed users cannot edit their username, public display name, or primary email address on GitHub; these fields are continuously synchronized from the IdP.
+   - **Outside Collaborator & Guest Model:** Traditional GitHub outside collaborators (inviting arbitrary external GitHub.com users to individual repositories) are prohibited in EMU. External contractors must either be provisioned as managed EMU enterprise members or onboarded through the **Guest Collaborator** feature, which requires provisioning guest user accounts in the enterprise IdP and assigning them to specific repositories.
+   - **IdP Group-to-Team Synchronization:** Team creation and membership management in GHEC EMU are primarily governed by SCIM group mapping. Bitbucket workspace groups (Cloud) and LDAP/AD groups (Data Center) should be mapped to enterprise IdP security groups and synchronized to GHEC teams.
+   - **Repository Visibility Policies:** Under EMU enterprise policies, public repository creation is typically disabled. All migrated repositories must be created as **Private** (accessible only to explicitly assigned teams/collaborators) or **Internal** (read access granted to all authenticated members of the enterprise).
+   - **Gist & Social Restrictions:** Public Gists are disabled in EMU; user-scoped Gists can only be secret/private or are disabled by policy.
 
 #### Behavioral Change Impacts on Users
 
@@ -390,26 +449,28 @@ Items requiring any meaningful transformation—even if the target capability ex
 | Webhook delivery history | ❌ Not preservable | New history starts on GHEC |
 | Watcher/subscription state | ❌ Requires user action | User re-subscribes |
 
-#### Scope Mapping Summary
+#### Scope Mapping Summary (Bitbucket Cloud & Data Center → GHEC EMU)
 
-| Bitbucket Scope | GHEC Scope |
-|---|---|
-| Atlassian Organization (billing/identity) | GHEC Enterprise |
-| Workspace | GHEC Organization |
-| Project | Team + Topic/Custom Property (composite) |
-| Repository | Repository |
-| Branch | Branch |
-| Pull Request | Pull Request |
-| Issue | Issue |
-| User (Atlassian) | GitHub User (or EMU managed user) |
-| Group | Team |
-| Deployment Environment | Environment |
+| Bitbucket Scope (Cloud) | Bitbucket Scope (Data Center / Server) | Target GHEC EMU Scope | Mapping Considerations |
+|---|---|---|---|
+| Atlassian Organization (Identity/Billing) | Server / Cluster Instance | GHEC Enterprise | Top-level governance, SAML/SCIM IdP configuration, audit log streaming, and enterprise policies. |
+| Workspace | Project (or dedicated instance) | GHEC Organization | Primary boundary for repositories, teams, and organization-level rulesets. |
+| Project | Project | Team + Custom Property (`bb_project=KEY`) | Permissions map to GHEC Teams; repository grouping maps to Custom Repository Properties. |
+| Repository | Repository | Repository | Private or Internal visibility under EMU enterprise policy. |
+| *(N/A)* | Personal Repository (`~username`) | Dedicated GHEC Organization Repository | EMU prohibits personal repos; migrate under an org (e.g., `org-user-sandboxes`) with user admin grant. |
+| Branch | Branch | Branch | Git refs transferred byte-for-byte via mirror push. |
+| Pull Request | Pull Request | Pull Request | Recreated via API; author/timestamp preserved via body annotation. |
+| Issue (`has_issues`) | *(External Jira Software)* | GitHub Issue (or Jira Cloud integration) | Cloud native issues map to GitHub Issues; DC Jira references preserved via Autolinks. |
+| User Account (Atlassian) | User Account (LDAP / AD / Crowd) | Enterprise Managed User (`user_shortcode`) | Provisioned via IdP SCIM; usernames normalized with enterprise shortcode. |
+| Workspace Group | User Group (LDAP / AD) | GHEC Team (IdP-synced) | Synchronized from enterprise IdP security groups via SCIM group mapping. |
+| Deployment Environment | Deployment Environment | GHEC Environment | Environment secrets, variables, and deployment protection rules (required reviewers, wait timer). |
+| Atlassian Connect / Forge App | Java OSGi Plugin / ScriptRunner | GitHub App / Actions Workflow | Re-architected as external GitHub App using webhooks and REST/GraphQL APIs. |
 
 ---
 
 ### 5.3 Conditions Applicable to Hard Blockers
 
-1. **Historical vs. Ongoing Capability Distinction**: The blockers in this section are almost exclusively about **historical runtime data** (pipeline runs, deployment records, audit events, webhook deliveries, review timestamps). The **ongoing capabilities** in the equivalent areas are usually achievable through 🟡-classified reconfiguration (e.g., GitHub Actions replaces Bitbucket Pipelines as ongoing CI capability, even though historical pipeline runs are a blocker).
+1. **Historical vs. Ongoing Capability Distinction**: The blockers in this section are almost exclusively about **historical runtime data** (pipeline runs, deployment records, audit events, webhook deliveries, review timestamps) or **in-process runtime extensibility** (server-side pre-receive hooks, Java OSGi plugins). The **ongoing capabilities** in the equivalent areas are usually achievable through 🟡-classified reconfiguration (e.g., GitHub Actions replaces Bitbucket Pipelines as ongoing CI capability, Rulesets replace pre-receive hooks, and GitHub Apps replace OSGi plugins).
 
 2. **External Cold Storage as Standard Compromise**: For most historical data blockers, the standard engineering compromise is:
    - Export the Bitbucket-side data via API before decommissioning source
@@ -447,6 +508,21 @@ Items requiring any meaningful transformation—even if the target capability ex
 | Jira historical dev-panel links (row 17) | High if Jira-integrated org | Jira-side link rewrite automation or accept decay |
 | Smart commit historical processing (row 18) | None — already processed | N/A |
 | Search index (row 19) | Very low — auto-rebuilds | None needed |
+| Server-side pre-receive hooks (row 20) | High — custom push blocking logic | Re-engineer as GHEC Rulesets & GitHub Actions |
+| Java OSGi plugins & ScriptRunner (row 21) | High — server-side in-process extensions | Re-architect as external GitHub Apps & REST/GraphQL API services |
+
+---
+
+### 5.4 Classification Legend & Framework Interpretation
+
+To ensure alignment across technical migration teams, customer stakeholders, and migration delivery workbooks, the following table details the definitions, boundaries, and operational actions for each equivalence category:
+
+| Equivalence Category | Report Indicator | Core Characteristics & Criteria | Target Treatment in GHEC EMU | Delivery Action & Governance |
+| :--- | :---: | :--- | :--- | :--- |
+| **Direct Equivalent** | 🟢 | Preserves byte-for-byte fidelity or identical configuration semantics. No data model restructuring or permission rewriting needed. | Native equivalent object or setting exists directly in GHEC EMU. | Migrate directly via automated API calls or Git mirror operations. |
+| **Transformed or Partially Supported** | 🟡 | Conceptual equivalent exists, but differs in data model, container hierarchy, field vocabulary, or attribution model. | Requires structural translation (e.g., Workspace/Project → Org/Team), label mapping, or body annotation. | Apply automated transformation scripts, identity mapping tables, and Ruleset design patterns. |
+| **No Equivalent or Not Migrated** | 🔴 | No native representation exists on GHEC SaaS, or target platform policy prohibits historical runtime data injection. | Target platform starts clean (append-only logs, fresh audit/build history); in-process server scripts prohibited. | Extract historical records via REST API into external cold storage (S3/SIEM); redesign custom policies into Rulesets. |
+| **Requires Separate Handling** | *(Operational Flag)* | Cross-cutting operational items that fall outside GitLift or standard repository migration pipelines. | Requires enterprise IT, IdP administrators, security teams, or cloud infrastructure owners. | Coordinate out-of-band workstreams: IdP SCIM group provisioning, secret re-entry from corporate vaults, and OIDC trust updates. |
 
 ---
 
@@ -556,18 +632,22 @@ Items requiring any meaningful transformation—even if the target capability ex
    - Switch consumers (webhooks, integrations, CI triggers)
    - Enable GHEC audit log streaming
 
-10. **The 238-Item Master Inventory Distributes Approximately 19% / 73% / 8% Across Classifications**: 
-    - 🟢 Seamless (45 items, ~19%): Core Git data, descriptive repository metadata, and commit-to-PR indexing
-    - 🟡 Migratable with Changes (174 items, ~73%): The bulk of the migration engineering work across organizational hierarchy, permissions, code review, branch protection, CI/CD, and integrations
-    - 🔴 Hard Blockers (19 items, ~8%): Historical runtime data (pipeline execution logs, deployment history, audit events, webhook deliveries) and ecosystem substitutions
+10. **The 245-Item Master Inventory Distributes Approximately 18.4% / 73.0% / 8.6% Across Classifications**: 
+    - 🟢 Seamless (45 items, ~18.4%): Core Git data, descriptive repository metadata, and automated commit-to-PR indexing
+    - 🟡 Migratable with Changes (179 items, ~73.0%): The bulk of the migration engineering work across organizational hierarchy, permissions, code review, branch protection, CI/CD, and integrations
+    - 🔴 Hard Blockers (21 items, ~8.6%): Historical runtime data (pipeline execution logs, deployment history, audit events, webhook deliveries), Bitbucket Data Center server-side pre-receive scripts, Java OSGi plugins, and ecosystem substitutions
     
     This distribution should inform migration project sizing: the seamless bucket is a small portion of the effort (though it's the biggest data volume), the middle bucket is where the migration solution's engineering complexity lives, and the blocker bucket requires organizational risk acceptance and external archive investment.
+
+11. **Bitbucket Data Center Server-Side Hooks and OSGi Architecture Require Complete Re-engineering**: Unlike Bitbucket Cloud which operates as a SaaS multi-tenant platform with Forge/Connect extensions, Bitbucket Data Center allows arbitrary JVM execution via Java OSGi plugins and server-side Git pre-receive hooks (ScriptRunner / native bash scripts). When migrating from DC to GHEC EMU, server-side pre-receive hooks cannot be executed directly on GitHub's managed infrastructure. They must be decomposed and mapped to GitHub Organization/Repository Rulesets (for ref patterns, commit metadata, signed commits, and branch requirements) combined with GitHub Actions workflows or pre-commit client hooks. In-process OSGi apps must be re-architected as standalone GitHub Apps communicating via webhooks and REST/GraphQL APIs.
+
+12. **GHEC EMU Enforces an IdP-Centric User Provisioning and Governance Model**: In GHEC with Enterprise Managed Users (EMU), user identity lifecycle is strictly unidirectional from the enterprise Identity Provider (Entra ID, Okta, PingFederate) via SCIM. Personal user profiles cannot be created or modified directly in GitHub, personal repositories (`~username`) must be consolidated into organization-scoped repositories, and permissions are governed through IdP Group-to-Team synchronization. Outside collaborators cannot be invited ad-hoc; external contractors must be provisioned as EMU Guest Collaborators through the IdP and assigned explicitly to designated repositories.
 
 ---
 
 ## 7. Documentation Sources
 
-The following official documentation sources were used as primary evidence for the technical conclusions in this report. For every significant claim, both source (Bitbucket Cloud) and target (GitHub Enterprise Cloud) documentation was cross-referenced.
+The following official documentation sources were used as primary evidence for the technical conclusions in this report. For every significant claim, source documentation (Bitbucket Cloud & Bitbucket Data Center/Server) and target documentation (GitHub Enterprise Cloud with Enterprise Managed Users — GHEC EMU) was cross-referenced.
 
 ### Bitbucket Cloud — Official Atlassian Documentation
 
@@ -638,6 +718,37 @@ The following official documentation sources were used as primary evidence for t
 
 **Git LFS**
 - Git LFS on Bitbucket Cloud — `https://support.atlassian.com/bitbucket-cloud/docs/use-git-lfs-with-bitbucket/`
+
+---
+
+### Bitbucket Data Center / Server — Official Atlassian Documentation
+
+**Core Architecture, Repositories & Administration**
+- Bitbucket Data Center REST API Reference (v1.0) — `https://docs.atlassian.com/bitbucket-server/rest/latest/bitbucket-rest.html`
+- Bitbucket Server and Data Center Documentation Hub — `https://confluence.atlassian.com/bkb/bitbucket-server-and-data-center-documentation-resources-1026046316.html`
+- Personal repositories in Bitbucket Data Center — `https://confluence.atlassian.com/bitbucketserver/personal-repositories-776639798.html`
+- Projects and repositories hierarchy — `https://confluence.atlassian.com/bitbucketserver/projects-776639795.html`
+
+**Access, Identity & Permissions**
+- Global, project, and repository permissions — `https://confluence.atlassian.com/bitbucketserver/using-project-and-repository-permissions-776639801.html`
+- HTTP access tokens in Bitbucket Data Center — `https://confluence.atlassian.com/bitbucketserver/http-access-tokens-939515499.html`
+- SSH user keys and access keys — `https://confluence.atlassian.com/bitbucketserver/ssh-access-keys-for-system-use-776639781.html`
+- External user directories (LDAP / Active Directory / Crowd) — `https://confluence.atlassian.com/bitbucketserver/external-user-directories-776639803.html`
+- Single sign-on with SAML 2.0 — `https://confluence.atlassian.com/bitbucketserver/saml-single-sign-on-for-atlassian-data-center-applications-856699318.html`
+
+**Branch Governance & Pull Requests**
+- Branch permissions in Bitbucket Data Center — `https://confluence.atlassian.com/bitbucketserver/using-branch-permissions-776639807.html`
+- Pull requests and code review — `https://confluence.atlassian.com/bitbucketserver/pull-requests-and-code-review-776639815.html`
+- Pull request merge strategies — `https://confluence.atlassian.com/bitbucketserver/pull-request-merge-strategies-844236565.html`
+- Review status: Needs Work — `https://confluence.atlassian.com/bitbucketserver/review-and-discuss-a-pull-request-776639818.html`
+- Default reviewers — `https://confluence.atlassian.com/bitbucketserver/effective-pull-request-reviews-844236569.html`
+
+**Extensibility, Hooks & Integrations**
+- Pre-receive and post-receive hooks — `https://confluence.atlassian.com/bitbucketserver/pre-receive-hooks-for-acceptance-testing-856699313.html`
+- Bitbucket Server Java Plugin API Reference — `https://developer.atlassian.com/server/bitbucket/reference/api-overview/`
+- Application Links (AppLinks) architecture — `https://confluence.atlassian.com/adminjiraserver/link-to-other-applications-814188982.html`
+- Managing project and repository webhooks — `https://confluence.atlassian.com/bitbucketserver/managing-webhooks-in-bitbucket-server-938025878.html`
+- Advanced Auditing in Bitbucket Data Center — `https://confluence.atlassian.com/bitbucketserver/advanced-auditing-in-bitbucket-data-center-1014674753.html`
 
 ---
 
@@ -778,15 +889,15 @@ The following official documentation sources were used as primary evidence for t
 
 ## 8. Summary of Report Completeness
 
-- **Total unique metadata/capabilities analyzed**: 238
+- **Total unique metadata/capabilities analyzed**: 245
 - **🟢 Seamless / Direct**: 45 (Section 2)
-- **🟡 Migratable with Changes / Behavioral Differences**: 174 (Section 3)
-- **🔴 Hard Blockers / Cannot Be Migrated**: 19 (Section 4)
+- **🟡 Migratable with Changes / Behavioral Differences**: 179 (Section 3)
+- **🔴 Hard Blockers / Cannot Be Migrated**: 21 (Section 4)
 - **Master inventory consistency**: Maintained across all sections; no items dropped or duplicated.
-- **Documentation coverage**: Primary evidence from Atlassian (Bitbucket Cloud) and GitHub (GHEC) official documentation.
-- **Scope**: Bitbucket Cloud → GitHub Enterprise Cloud only. No mixing with Bitbucket Server/Data Center, GitHub.com free tier, or GitHub Enterprise Server.
-- **Migration tooling references**: No reliance on GitHub-provided migration tooling as the solution; analysis is grounded in platform capabilities to inform custom migration solution design.
+- **Documentation coverage**: Primary evidence from Atlassian (Bitbucket Cloud & Bitbucket Data Center/Server) and GitHub (GitHub Enterprise Cloud with Enterprise Managed Users — GHEC EMU) official documentation.
+- **Scope**: Comprehensive functional equivalence mapping from Bitbucket Cloud and Bitbucket Data Center/Server to GitHub Enterprise Cloud with Enterprise Managed Users (GHEC EMU).
+- **Migration tooling references**: No reliance on GitHub-provided migration tooling as the solution; analysis is grounded in platform capabilities to inform custom migration solution design (GitLift).
 
 ---
 
-*End of Bitbucket Cloud → GitHub Enterprise Cloud (GHEC) Metadata Migration / Parity Report.*
+*End of Bitbucket (Cloud & Data Center) → GitHub Enterprise Cloud (GHEC EMU) Metadata Migration / Parity Report.*
