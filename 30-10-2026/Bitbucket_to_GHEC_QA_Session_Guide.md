@@ -1,6 +1,6 @@
-# Bitbucket → GHEC EMU Migration: Complete Q&A Session Guide
+# Bitbucket → GHEC EMU Migration Analysis Doubts
 
-> **Purpose:** End-to-end preparation for a technical Q&A session covering Bitbucket Cloud and Data Center/Server migration to GitHub Enterprise Cloud with Enterprise Managed Users (GHEC EMU) via GitLift. Every answer is grounded in the spike documents and official documentation.
+> **Purpose:** End-to-end preparation for covering Bitbucket Cloud and Data Center/Server migration to GitHub Enterprise Cloud with Enterprise Managed Users (GHEC EMU) via GitLift. Every answer is grounded in the spike documents and official documentation.
 
 ---
 
@@ -495,35 +495,9 @@ Output: mapping table with status `MATCHED` / `AMBIGUOUS` / `UNMATCHED`.
 
 ---
 
-## Part 8: CI/CD Migration
+## Part 8: Branch Protection / Governance Migration
 
-### Q8.1 Bitbucket Pipelines → GitHub Actions: What changes?
-
-| Bitbucket Pipelines | GitHub Actions |
-|---|---|
-| `bitbucket-pipelines.yml` | `.github/workflows/*.yml` |
-| `pipe:` steps | Marketplace Actions |
-| `size: 1x`–`32x` (container resources) | `runs-on:` with Larger Runners |
-| `clone: depth: N` | `actions/checkout` with `fetch-depth: N` |
-| `caches: - docker` | `docker/build-push-action` with `cache-from: type=gha` |
-| `condition.changesets.includePaths` | `on.push.paths` or `dorny/paths-filter` |
-| `max-time` | `timeout-minutes` |
-| Deployment environments | GHEC Environments with protection rules |
-| OIDC to AWS/GCP/Azure | OIDC (different issuer — trust policies must be updated) |
-| Bitbucket Runners (Docker containers) | Self-hosted runners (installed agents) |
-
-### Q8.2 What about DC CI (Bamboo/Jenkins)?
-
-DC has no native Pipelines. CI is external (Bamboo, Jenkins, TeamCity) via build-status webhooks. Options:
-- Re-point CI tool to GHEC via commit status webhooks
-- Convert to GitHub Actions
-- Keep external CI and use GHEC commit status API
-
----
-
-## Part 9: Branch Protection / Governance Migration
-
-### Q9.1 Branch rule translation (Appendix C from detailed spike)
+### Q8.1 Branch rule translation (Appendix C from detailed spike)
 
 | Bitbucket Rule | GHEC Equivalent | Fidelity |
 |---|---|---|
@@ -544,7 +518,7 @@ DC has no native Pipelines. CI is external (Bamboo, Jenkins, TeamCity) via build
 
 ---
 
-## Part 10: Quick-Fire Q&A — Anticipating Session Questions
+## Part 9: Some More Doubts
 
 **Q: Can we migrate selected repos without migrating an entire workspace?**
 Yes. Scope is a repository list by id/uuid. Group-level objects (teams, properties) are created only as needed by selected repositories.
@@ -574,5 +548,3 @@ Keep Bitbucket in read-only mode for a grace period. If migration fails validati
 Freeze window: set Bitbucket read-only → final delta Git sync → final delta PR sync → validate → switch. Any change after the final checkpoint invalidates approval and requires another delta + validation.
 
 ---
-
-*End of Q&A Session Guide*
