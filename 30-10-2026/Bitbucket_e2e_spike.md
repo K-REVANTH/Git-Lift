@@ -3,7 +3,6 @@
 
 | Document control | Details |
 |---|---|
-| Analysis date | 2026-10-29 |
 | Source | Bitbucket Cloud (REST API v2.0 and Git) |
 | Target | GitHub Enterprise Cloud (GHEC) |
 | Reference | `Gitlab_e2e_spike`; coverage is mapped in section 27 |
