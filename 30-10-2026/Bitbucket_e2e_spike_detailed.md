@@ -3,7 +3,6 @@
 
 | Document control | Details |
 |---|---|
-| Analysis date | 2026-10-30 |
 | Sources | Bitbucket Cloud (C) and Bitbucket Data Center/Server (DC) |
 | Target | GitHub Enterprise Cloud with Enterprise Managed Users (GHEC EMU) |
 | Tool | GitLift (GL) |
