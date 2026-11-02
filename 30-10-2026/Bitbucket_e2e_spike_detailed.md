@@ -116,6 +116,7 @@
 ### A. Authentication and Access
 
 **A1**. What authentication methods are supported by Bitbucket Cloud?
+
   **C:** API tokens (personal; Basic = Atlassian email + token, or Bearer since
      2026-08-18; mandatory expiry, max 1 year; scoped). Repository, project and
      workspace access tokens (resource-bound, scoped, not user accounts).
